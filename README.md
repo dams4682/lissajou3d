@@ -2,6 +2,8 @@
 
 Lissajou3D converts animated 3D wireframe shapes into stereo audio that can be displayed on an XY oscilloscope or in Bespoke Synth's `lissajous` module.
 
+
+<img width="1595" height="841" alt="Capture d’écran 2026-06-19 005354" src="https://github.com/user-attachments/assets/48531ccc-ccf7-4892-8d8c-be5dc9958b02" />
 The exported WAV uses this mapping:
 
 ```text
@@ -16,6 +18,8 @@ animated 3D wireframe -> 2D XY projection -> stereo WAV
 ```
 
 This means the WAV is still a normal stereo audio file, but when routed to an XY visualizer it draws a moving 3D-looking object.
+
+<img width="1588" height="834" alt="bespoke" src="https://github.com/user-attachments/assets/9f303fbd-4725-4dbe-b3f8-7f86c8a03a49" />
 
 ## Features
 
