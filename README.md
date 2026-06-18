@@ -86,6 +86,9 @@ If no movement is recorded, Lissajou3D exports an automatic slow rotation. This 
 - `Scan rate Hz`: how many times the wireframe is redrawn per second.
 - `Scan note`: optional musical note used as scan frequency, for example `C2` or `F2`.
 - `Scale`: final XY amplitude.
+- `Trace mode`:
+  - `wire_walk`: follows connected wire edges to avoid diagonal retrace lines.
+  - `fast_jumps`: draws each edge in order with direct travel between edges.
 - `Smoothing`: light moving-average smoothing.
 - `Normalize`: prevents clipping.
 - `Invert X` / `Invert Y`: axis correction for different display chains. `Invert Y` is enabled by default for Bespoke-style display.

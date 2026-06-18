@@ -63,6 +63,9 @@ Si aucun mouvement n'est enregistré, le logiciel génère automatiquement une r
 - `Scan rate Hz`: nombre de redessins par seconde.
 - `Scan note`: utilise une note musicale comme fréquence de balayage, par exemple `C2` ou `F2`.
 - `Camera scale`: cadrage de la caméra. Plus la valeur est grande, plus l'objet paraît petit.
+- `Trace mode`:
+  - `wire_walk`: suit les arêtes connectées pour éviter les diagonales parasites.
+  - `fast_jumps`: dessine les arêtes dans l'ordre avec des déplacements directs entre elles.
 - `Projection`: `orthographic` est plus stable; `perspective` donne plus de profondeur.
 - `Invert Y`: activé par défaut pour un affichage cohérent dans Bespoke.
 

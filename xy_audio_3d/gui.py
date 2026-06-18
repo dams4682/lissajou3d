@@ -175,10 +175,13 @@ class MainWindow(QMainWindow):
         self.projection.addItems(["orthographic", "perspective"])
         self.perspective = _double_spin(1.2, 8.0, 2.8, 0.1)
         self.view_scale = _double_spin(1.2, 6.0, 2.4, 0.1)
+        self.trace_mode = QComboBox()
+        self.trace_mode.addItems(["wire_walk", "fast_jumps"])
         shape_form.addRow("Shape", self.shape)
         shape_form.addRow("Projection", self.projection)
         shape_form.addRow("Perspective", self.perspective)
         shape_form.addRow("Camera scale", self.view_scale)
+        shape_form.addRow("Trace mode", self.trace_mode)
         controls_layout.addWidget(shape_box)
 
         render_box = QGroupBox("Audio Render")
@@ -295,6 +298,7 @@ class MainWindow(QMainWindow):
             projection=self.projection.currentText(),
             perspective=self.perspective.value(),
             view_scale=self.view_scale.value(),
+            trace_mode=self.trace_mode.currentText(),
         )
 
     def _update_viewer_projection(self) -> None:

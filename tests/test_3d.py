@@ -8,7 +8,7 @@ import pytest
 from xy_audio.engine import export_wav
 from xy_audio_3d.geometry import Transform, make_shape, project_vertices, project_wireframe
 from xy_audio_3d.motion import MotionTrack, MotionKeyframe
-from xy_audio_3d.render import Render3DConfig, build_3d_xy_audio
+from xy_audio_3d.render import Render3DConfig, _contours_to_trajectory, build_3d_xy_audio
 
 
 def test_3d_primitives_have_vertices_and_edges():
@@ -63,3 +63,27 @@ def test_build_3d_xy_audio_is_stereo_normalized(tmp_path):
         assert wav.getnchannels() == 2
         assert wav.getframerate() == 8_000
         assert wav.getnframes() == 2_000
+
+
+def test_wire_walk_avoids_non_edge_jumps_for_cube():
+    shape = make_shape("cube")
+    contours = project_wireframe(shape, Transform(rotation_x=25, rotation_y=35), projection="orthographic")
+    walk = _contours_to_trajectory(contours, mode="wire_walk")
+
+    def key(point: np.ndarray) -> tuple[int, int]:
+        return (int(round(float(point[0]) * 1_000_000)), int(round(float(point[1]) * 1_000_000)))
+
+    allowed_edges = {
+        tuple(sorted((key(edge[0]), key(edge[1]))))
+        for edge in contours
+        if float(np.linalg.norm(edge[1] - edge[0])) > 0
+    }
+    walk_edges = [
+        tuple(sorted((key(a), key(b))))
+        for a, b in zip(walk, walk[1:])
+        if float(np.linalg.norm(b - a)) > 0
+    ]
+
+    assert len(walk_edges) >= len(allowed_edges)
+    assert walk_edges
+    assert set(walk_edges).issubset(allowed_edges)

@@ -56,3 +56,13 @@ Increase `Scan rate Hz`, for example:
 ```
 
 Or choose a higher scan note such as `C2`, `F2`, or `A2`.
+
+## If You See Diagonal Lines Inside The Shape
+
+Use:
+
+```text
+Trace mode: wire_walk
+```
+
+This makes the beam travel along existing wire edges instead of jumping directly from one disconnected edge to another.

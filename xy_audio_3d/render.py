@@ -25,6 +25,7 @@ class Render3DConfig:
     projection: str = "orthographic"
     perspective: float = 2.8
     view_scale: float = 2.4
+    trace_mode: str = "wire_walk"
     sphere_detail: int = 16
     auto_rotate_degrees: float = 360.0
 
@@ -57,7 +58,7 @@ def build_3d_xy_audio(
             perspective=config.perspective,
             view_scale=config.view_scale,
         )
-        trajectory = _contours_to_trajectory(contours)
+        trajectory = _contours_to_trajectory(contours, mode=config.trace_mode)
         chunks.append(_resample_polyline(trajectory, base_samples))
 
     audio = np.vstack(chunks)
@@ -107,9 +108,11 @@ def _transform_at(time_seconds: float, config: Render3DConfig, motion: MotionTra
     )
 
 
-def _contours_to_trajectory(contours: list[np.ndarray]) -> np.ndarray:
+def _contours_to_trajectory(contours: list[np.ndarray], mode: str = "wire_walk") -> np.ndarray:
     if not contours:
         return np.zeros((2, 2), dtype=np.float64)
+    if mode == "wire_walk":
+        return _wire_walk_trajectory(contours)
     pieces: list[np.ndarray] = []
     previous: np.ndarray | None = None
     for contour in contours:
@@ -118,6 +121,123 @@ def _contours_to_trajectory(contours: list[np.ndarray]) -> np.ndarray:
         pieces.append(contour)
         previous = contour[-1]
     return np.vstack(pieces)
+
+
+def _wire_walk_trajectory(contours: list[np.ndarray]) -> np.ndarray:
+    """Build one continuous walk along existing wire edges.
+
+    This avoids oscilloscope retrace diagonals by traversing between disconnected
+    edge segments through already existing wire edges instead of jumping across
+    the shape interior.
+    """
+    vertices, edges = _graph_from_contours(contours)
+    if not edges:
+        return np.vstack(contours)
+
+    adjacency: dict[int, list[int]] = {i: [] for i in range(len(vertices))}
+    unvisited: set[tuple[int, int]] = set()
+    for a, b in edges:
+        adjacency[a].append(b)
+        adjacency[b].append(a)
+        unvisited.add(_edge_key(a, b))
+
+    start = edges[0][0]
+    walk_indices = _greedy_edge_walk(adjacency, unvisited, start)
+    return np.asarray([vertices[i] for i in walk_indices], dtype=np.float64)
+
+
+def _graph_from_contours(contours: list[np.ndarray]) -> tuple[list[np.ndarray], list[tuple[int, int]]]:
+    vertices: list[np.ndarray] = []
+    lookup: dict[tuple[int, int], int] = {}
+    edges: list[tuple[int, int]] = []
+    seen_edges: set[tuple[int, int]] = set()
+
+    def vertex_index(point: np.ndarray) -> int:
+        key = (int(round(float(point[0]) * 1_000_000)), int(round(float(point[1]) * 1_000_000)))
+        if key not in lookup:
+            lookup[key] = len(vertices)
+            vertices.append(np.asarray(point, dtype=np.float64))
+        return lookup[key]
+
+    for contour in contours:
+        if len(contour) < 2:
+            continue
+        a = vertex_index(contour[0])
+        b = vertex_index(contour[-1])
+        if a != b:
+            key = _edge_key(a, b)
+            if key not in seen_edges:
+                edges.append((a, b))
+                seen_edges.add(key)
+    return vertices, edges
+
+
+def _greedy_edge_walk(adjacency: dict[int, list[int]], unvisited: set[tuple[int, int]], start: int) -> list[int]:
+    current = start
+    path = [current]
+
+    while unvisited:
+        next_vertex = _first_unvisited_neighbor(adjacency, unvisited, current)
+        if next_vertex is None:
+            target = _nearest_unvisited_endpoint(adjacency, unvisited, current)
+            bridge = _shortest_vertex_path(adjacency, current, target)
+            path.extend(bridge[1:])
+            current = target
+            continue
+        unvisited.remove(_edge_key(current, next_vertex))
+        current = next_vertex
+        path.append(current)
+
+    return path
+
+
+def _first_unvisited_neighbor(adjacency: dict[int, list[int]], unvisited: set[tuple[int, int]], vertex: int) -> int | None:
+    for neighbor in adjacency[vertex]:
+        if _edge_key(vertex, neighbor) in unvisited:
+            return neighbor
+    return None
+
+
+def _nearest_unvisited_endpoint(adjacency: dict[int, list[int]], unvisited: set[tuple[int, int]], start: int) -> int:
+    endpoints = {vertex for edge in unvisited for vertex in edge}
+    queue = [start]
+    previous: dict[int, int | None] = {start: None}
+    for vertex in queue:
+        if vertex in endpoints:
+            return vertex
+        for neighbor in adjacency[vertex]:
+            if neighbor not in previous:
+                previous[neighbor] = vertex
+                queue.append(neighbor)
+    return next(iter(endpoints))
+
+
+def _shortest_vertex_path(adjacency: dict[int, list[int]], start: int, target: int) -> list[int]:
+    if start == target:
+        return [start]
+    queue = [start]
+    previous: dict[int, int | None] = {start: None}
+    for vertex in queue:
+        if vertex == target:
+            break
+        for neighbor in adjacency[vertex]:
+            if neighbor not in previous:
+                previous[neighbor] = vertex
+                queue.append(neighbor)
+
+    if target not in previous:
+        return [start, target]
+
+    path = [target]
+    cursor = target
+    while previous[cursor] is not None:
+        cursor = previous[cursor]
+        path.append(cursor)
+    return path[::-1]
+
+
+def _edge_key(a: int, b: int) -> tuple[int, int]:
+    return (a, b) if a <= b else (b, a)
 
 
 def _resample_polyline(points: np.ndarray, target_samples: int) -> np.ndarray:
