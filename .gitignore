@@ -1,0 +1,18 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+build/
+dist/
+*.spec
+
+# Local generated files
+*.log
+*.tmp
+*.bak
+*.swp
+*.user
+
+# Optional generated audio exports. Keep curated examples explicitly.
+*.wav
+!examples/cube_3d_auto.wav

@@ -1,0 +1,4 @@
+numpy>=2.0
+PyQt6>=6.7
+pyinstaller>=6.0
+pytest>=8.0
