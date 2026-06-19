@@ -71,6 +71,8 @@ dist\Lissajou3D\Lissajou3D.exe
 
 Si aucun mouvement n'est enregistré, le logiciel génère automatiquement une rotation lente.
 
+Les rendus STL longs se lancent en arrière-plan. Les boutons d'action sont désactivés pendant le calcul, puis la lecture ou l'export reprend automatiquement quand l'audio est prêt.
+
 ## Import STL
 
 Le bouton `Import STL` accepte les fichiers STL ASCII et STL binaires. Le logiciel transforme les triangles du STL en arêtes filaires uniques, puis recentre et normalise automatiquement le modèle pour qu'il rentre dans la preview et dans la plage audio XY.
@@ -107,6 +109,7 @@ examples\tetrahedron_ascii.stl
 ## Réglages importants
 
 - `Scan rate Hz`: nombre de redessins par seconde.
+- `Geometry FPS`: nombre de vraies positions 3D recalculées par seconde. Une valeur basse accélère beaucoup l'export des STL denses sans changer la fréquence de balayage audio.
 - `Scan note`: utilise une note musicale comme fréquence de balayage, par exemple `C2` ou `F2`.
 - `Camera scale`: cadrage de la caméra. Plus la valeur est grande, plus l'objet paraît petit.
 - `Trace mode`:
@@ -117,6 +120,8 @@ examples\tetrahedron_ascii.stl
 - `Invert Y`: activé par défaut pour un affichage cohérent dans Bespoke.
 
 Les champs acceptent des valeurs expérimentales élevées, par exemple `8000`, `12000` ou `16000` Hz pour `Scan rate Hz`. Pour ces essais, utilisez plutôt `96000` ou `192000` en `Sample rate`; si le balayage est trop haut avec trop peu d'échantillons par cycle, la forme devient moins propre et le rendu peut être plus long à calculer.
+
+Pour un STL dense, gardez par exemple `Scan rate Hz` entre `40` et `60`, puis mettez `Geometry FPS` entre `4` et `8` si l'export est trop lent. Le logiciel redessine alors plusieurs fois la meme projection avant de recalculer la position 3D suivante. Visuellement, le mouvement reste lisible, mais le calcul est beaucoup plus léger.
 
 ## Exemple
 

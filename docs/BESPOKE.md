@@ -57,6 +57,17 @@ Increase `Scan rate Hz`, for example:
 
 Or choose a higher scan note such as `C2`, `F2`, or `A2`.
 
+## If STL Export Feels Frozen
+
+Keep the visual redraw frequency reasonable and lower only the 3D recalculation rate:
+
+```text
+Scan rate Hz: 40 to 60
+Geometry FPS: 4 to 8
+```
+
+`Scan rate Hz` controls how often the oscilloscope beam redraws the shape. `Geometry FPS` controls how often Lissajou3D recalculates the 3D pose and STL silhouette during export.
+
 ## If You See Diagonal Lines Inside The Shape
 
 Use:

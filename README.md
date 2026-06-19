@@ -92,6 +92,8 @@ dist\Lissajou3D\Lissajou3D.exe
 
 If no movement is recorded, Lissajou3D exports an automatic slow rotation. This is useful for quick testing.
 
+Long STL renders run in the background. The action buttons are disabled during calculation, then playback/export continues when the audio is ready.
+
 ## STL Import
 
 `Import STL` accepts ASCII STL and binary STL files. The triangles are converted to unique wireframe edges, then centered and normalized so the object fits the viewer and audio range.
@@ -141,6 +143,7 @@ examples\tetrahedron_ascii.stl
 - `Duration`: final WAV duration. If a movement was recorded, duration follows the recording.
 - `Sample rate`: WAV sample rate, usually `48000`.
 - `Scan rate Hz`: how many times the wireframe is redrawn per second.
+- `Geometry FPS`: how often the 3D pose and STL silhouette are recalculated. Lower values make dense STL exports much faster while keeping the same scan rate.
 - `Scan note`: optional musical note used as scan frequency, for example `C2` or `F2`.
 - `Scale`: final XY amplitude.
 - `Trace mode`:
@@ -154,6 +157,8 @@ examples\tetrahedron_ascii.stl
 `Scan note` overrides `Scan rate Hz` when filled.
 
 The GUI accepts experimental high scan rates such as `8000`, `12000`, or `16000` Hz. Use a high sample rate such as `96000` or `192000` for those tests; very high scan rates can take longer to render and may look rough if there are too few samples per scan cycle.
+
+For dense STL models, keep `Scan rate Hz` around `40` to `60` for the visual refresh, then reduce `Geometry FPS` to `4` to `8` if export feels frozen. This redraws the same projected line-art several times before recalculating the next 3D pose, which is usually enough for oscilloscope persistence and much faster than recalculating the STL silhouette every scan.
 
 ## Bespoke Synth
 

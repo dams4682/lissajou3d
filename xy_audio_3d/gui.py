@@ -6,7 +6,7 @@ import sys
 import winsound
 
 import numpy as np
-from PyQt6.QtCore import QPoint, Qt, pyqtSignal
+from PyQt6.QtCore import QObject, QPoint, Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QMatrix4x4, QPainter, QPalette, QPen
 from PyQt6.QtOpenGL import QOpenGLBuffer, QOpenGLFunctions_2_0, QOpenGLShader, QOpenGLShaderProgram
 from PyQt6.QtOpenGLWidgets import QOpenGLWidget
@@ -36,6 +36,25 @@ from xy_audio.engine import export_wav
 from .geometry import Transform, Wireframe, load_stl_wireframe, make_shape, project_wireframe, wireframe_edges_for_transform
 from .motion import MotionTrack, copy_transform
 from .render import Render3DConfig, build_3d_xy_audio
+
+
+class RenderWorker(QObject):
+    finished = pyqtSignal(object)
+    failed = pyqtSignal(str)
+
+    def __init__(self, config: Render3DConfig, motion: MotionTrack | None, wireframe: Wireframe | None) -> None:
+        super().__init__()
+        self.config = config
+        self.motion = motion
+        self.wireframe = wireframe
+
+    def run(self) -> None:
+        try:
+            audio = build_3d_xy_audio(self.config, motion=self.motion, wireframe=self.wireframe)
+        except Exception as exc:
+            self.failed.emit(str(exc))
+            return
+        self.finished.emit((audio, self.config.sample_rate))
 
 
 class GpuWireframeViewer(QOpenGLWidget):
@@ -436,9 +455,14 @@ class MainWindow(QMainWindow):
         self.motion = MotionTrack()
         self.recording = False
         self.current_audio: np.ndarray | None = None
+        self.current_audio_sample_rate = 48_000
         self.custom_wireframe: Wireframe | None = None
         self.stl_path: Path | None = None
         self.stl_settings_signature: tuple[str, float, int | None] | None = None
+        self.render_thread: QThread | None = None
+        self.render_worker: RenderWorker | None = None
+        self.render_export_path: str | None = None
+        self.render_play_after = False
         self.temp_playback_files: list[Path] = []
         self._build_ui()
         self._apply_theme()
@@ -498,6 +522,7 @@ class MainWindow(QMainWindow):
         self.duration = _double_spin(0.001, 86_400.0, 5.0, 0.1)
         self.sample_rate = _spin(1, 2_147_483_647, 48_000, 1_000)
         self.scan_rate_hz = _double_spin(0.0, 1_000_000.0, 40.0, 1.0)
+        self.geometry_rate_hz = _double_spin(0.1, 1_000_000.0, 8.0, 1.0)
         self.scan_note = QComboBox()
         self.scan_note.addItems([
             "",
@@ -516,6 +541,7 @@ class MainWindow(QMainWindow):
         form.addRow("Duration", self.duration)
         form.addRow("Sample rate", self.sample_rate)
         form.addRow("Scan rate Hz", self.scan_rate_hz)
+        form.addRow("Geometry FPS", self.geometry_rate_hz)
         form.addRow("Scan note", self.scan_note)
         form.addRow("Scale", self.scale)
         form.addRow("Smoothing", self.smoothing)
@@ -537,15 +563,15 @@ class MainWindow(QMainWindow):
         controls_layout.addLayout(record_row)
 
         action_row = QHBoxLayout()
-        preview_btn = QPushButton("Render Preview")
-        preview_btn.clicked.connect(self.render_audio)
-        play_btn = QPushButton("Play XY")
-        play_btn.clicked.connect(self.play_xy)
-        export_btn = QPushButton("Export WAV")
-        export_btn.clicked.connect(self.export_wav_dialog)
-        action_row.addWidget(preview_btn)
-        action_row.addWidget(play_btn)
-        action_row.addWidget(export_btn)
+        self.preview_btn = QPushButton("Render Preview")
+        self.preview_btn.clicked.connect(self.render_audio)
+        self.play_btn = QPushButton("Play XY")
+        self.play_btn.clicked.connect(self.play_xy)
+        self.export_btn = QPushButton("Export WAV")
+        self.export_btn.clicked.connect(self.export_wav_dialog)
+        action_row.addWidget(self.preview_btn)
+        action_row.addWidget(self.play_btn)
+        action_row.addWidget(self.export_btn)
         controls_layout.addLayout(action_row)
         controls_layout.addStretch(1)
 
@@ -604,6 +630,7 @@ class MainWindow(QMainWindow):
             sample_rate=self.sample_rate.value(),
             scan_rate_hz=self.scan_rate_hz.value() if self.scan_rate_hz.value() > 0 else None,
             scan_note=self.scan_note.currentText().strip() or None,
+            geometry_rate_hz=self.geometry_rate_hz.value(),
             scale=self.scale.value(),
             smoothing=self.smoothing.value(),
             normalize=self.normalize.isChecked(),
@@ -688,6 +715,7 @@ class MainWindow(QMainWindow):
             self.duration,
             self.sample_rate,
             self.scan_rate_hz,
+            self.geometry_rate_hz,
             self.scale,
             self.smoothing,
         ):
@@ -736,36 +764,92 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Reset")
 
     def render_audio(self) -> None:
+        self._start_render()
+
+    def _start_render(self, export_path: str | None = None, play_after: bool = False) -> None:
+        if self.render_thread is not None:
+            self.statusBar().showMessage("Render already running")
+            return
         try:
             if not self._ensure_stl_settings_applied():
                 return
             config = self._config()
             motion = self.motion if self.motion.keyframes else None
-            self.current_audio = build_3d_xy_audio(config, motion=motion, wireframe=self.custom_wireframe)
         except Exception as exc:
             QMessageBox.critical(self, "3D render failed", str(exc))
             return
-        self.statusBar().showMessage(f"Rendered {len(self.current_audio)} stereo samples")
+
+        self.render_export_path = export_path
+        self.render_play_after = play_after
+        self.render_thread = QThread(self)
+        self.render_worker = RenderWorker(config, motion, self.custom_wireframe)
+        self.render_worker.moveToThread(self.render_thread)
+        self.render_thread.started.connect(self.render_worker.run)
+        self.render_worker.finished.connect(self._render_finished)
+        self.render_worker.failed.connect(self._render_failed)
+        self.render_worker.finished.connect(self.render_thread.quit)
+        self.render_worker.failed.connect(self.render_thread.quit)
+        self.render_thread.finished.connect(self._render_thread_finished)
+        self.render_worker.finished.connect(self.render_worker.deleteLater)
+        self.render_worker.failed.connect(self.render_worker.deleteLater)
+        self.render_thread.finished.connect(self.render_thread.deleteLater)
+        self._set_render_busy(True)
+        scan_label = config.scan_note or config.scan_rate_hz or 40
+        self.statusBar().showMessage(
+            f"Rendering audio in background: {config.duration:.2f}s, "
+            f"{scan_label} scan, {config.geometry_rate_hz:.1f} geometry FPS"
+        )
+        self.render_thread.start()
+
+    def _render_finished(self, result: object) -> None:
+        audio, sample_rate = result
+        self.current_audio = audio
+        self.current_audio_sample_rate = int(sample_rate)
+        if self.render_export_path:
+            export_wav(self.current_audio, self.render_export_path, self.current_audio_sample_rate)
+            self.statusBar().showMessage(f"WAV exported: {self.render_export_path}")
+        else:
+            self.statusBar().showMessage(f"Rendered {len(self.current_audio)} stereo samples")
+        if self.render_play_after:
+            self._play_current_audio()
+
+    def _render_failed(self, message: str) -> None:
+        QMessageBox.critical(self, "3D render failed", message)
+
+    def _render_thread_finished(self) -> None:
+        self.render_thread = None
+        self.render_worker = None
+        self.render_export_path = None
+        self.render_play_after = False
+        self._set_render_busy(False)
+
+    def _set_render_busy(self, busy: bool) -> None:
+        self.preview_btn.setEnabled(not busy)
+        self.play_btn.setEnabled(not busy)
+        self.export_btn.setEnabled(not busy)
 
     def play_xy(self) -> None:
         if self.current_audio is None:
-            self.render_audio()
+            self._start_render(play_after=True)
+            return
+        self._play_current_audio()
+
+    def _play_current_audio(self) -> None:
         if self.current_audio is None:
             return
-        path = write_temp_wav(self.current_audio, self._config().sample_rate)
+        path = write_temp_wav(self.current_audio, self.current_audio_sample_rate)
         self.temp_playback_files.append(path)
         winsound.PlaySound(str(path), winsound.SND_FILENAME | winsound.SND_ASYNC)
         self.statusBar().showMessage("Playing generated 3D XY audio")
 
     def export_wav_dialog(self) -> None:
-        if self.current_audio is None:
-            self.render_audio()
-        if self.current_audio is None:
-            return
         path, _ = QFileDialog.getSaveFileName(self, "Export 3D WAV", "lissajou_3d.wav", "WAV files (*.wav)")
         if not path:
             return
-        export_wav(self.current_audio, path, self._config().sample_rate)
+        if self.current_audio is None:
+            self._start_render(export_path=path)
+            return
+        export_wav(self.current_audio, path, self.current_audio_sample_rate)
         self.statusBar().showMessage(f"WAV exported: {path}")
 
 

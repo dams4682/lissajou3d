@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import math
 
 import numpy as np
 
@@ -26,6 +25,7 @@ class Render3DConfig:
     perspective: float = 2.8
     view_scale: float = 2.4
     trace_mode: str = "wire_walk"
+    geometry_rate_hz: float = 8.0
     sphere_detail: int = 16
     auto_rotate_degrees: float = 360.0
 
@@ -46,20 +46,25 @@ def build_3d_xy_audio(
     total_samples = max(2, int(round(config.duration * config.sample_rate)))
     cycles = max(1, int(round(_scan_rate(config) * config.duration)))
     base_samples = max(2, total_samples // cycles)
+    frame_count = max(1, min(cycles, int(round(max(0.1, config.geometry_rate_hz) * config.duration))))
+    frame_chunks: dict[int, np.ndarray] = {}
     chunks: list[np.ndarray] = []
 
     for cycle in range(cycles):
-        center_t = (cycle + 0.5) / cycles * config.duration
-        transform = _transform_at(center_t, config, motion)
-        contours = project_wireframe(
-            wireframe,
-            transform,
-            projection=config.projection,
-            perspective=config.perspective,
-            view_scale=config.view_scale,
-        )
-        trajectory = _contours_to_trajectory(contours, mode=config.trace_mode)
-        chunks.append(_resample_polyline(trajectory, base_samples))
+        frame = min(frame_count - 1, int(cycle * frame_count / cycles))
+        if frame not in frame_chunks:
+            center_t = (frame + 0.5) / frame_count * config.duration
+            transform = _transform_at(center_t, config, motion)
+            contours = project_wireframe(
+                wireframe,
+                transform,
+                projection=config.projection,
+                perspective=config.perspective,
+                view_scale=config.view_scale,
+            )
+            trajectory = _contours_to_trajectory(contours, mode=config.trace_mode)
+            frame_chunks[frame] = _resample_polyline(trajectory, base_samples)
+        chunks.append(frame_chunks[frame])
 
     audio = np.vstack(chunks)
     if len(audio) < total_samples:
@@ -130,31 +135,32 @@ def _nearest_fragment_trajectory(contours: list[np.ndarray]) -> np.ndarray:
     if not fragments:
         return np.vstack(contours)
 
-    remaining = fragments[:]
-    current = remaining.pop(0)
-    ordered = [current]
-    cursor = current[-1]
+    starts = np.asarray([fragment[0] for fragment in fragments], dtype=np.float64)
+    ends = np.asarray([fragment[-1] for fragment in fragments], dtype=np.float64)
+    remaining = np.ones(len(fragments), dtype=bool)
+    remaining[0] = False
 
-    while remaining:
-        best_index = 0
-        best_reverse = False
-        best_distance = math.inf
-        for index, fragment in enumerate(remaining):
-            start_distance = float(np.linalg.norm(fragment[0] - cursor))
-            end_distance = float(np.linalg.norm(fragment[-1] - cursor))
-            if start_distance < best_distance:
-                best_index = index
-                best_reverse = False
-                best_distance = start_distance
-            if end_distance < best_distance:
-                best_index = index
-                best_reverse = True
-                best_distance = end_distance
-        next_fragment = remaining.pop(best_index)
-        if best_reverse:
-            next_fragment = next_fragment[::-1]
-        ordered.append(next_fragment)
-        cursor = next_fragment[-1]
+    ordered: list[np.ndarray] = [fragments[0]]
+    cursor = ends[0].copy()
+
+    while bool(np.any(remaining)):
+        indexes = np.flatnonzero(remaining)
+        start_deltas = starts[indexes] - cursor
+        end_deltas = ends[indexes] - cursor
+        start_distances = np.einsum("ij,ij->i", start_deltas, start_deltas)
+        end_distances = np.einsum("ij,ij->i", end_deltas, end_deltas)
+
+        start_pos = int(np.argmin(start_distances))
+        end_pos = int(np.argmin(end_distances))
+        use_reversed = bool(end_distances[end_pos] < start_distances[start_pos])
+        best_index = int(indexes[end_pos if use_reversed else start_pos])
+
+        fragment = fragments[best_index]
+        if use_reversed:
+            fragment = fragment[::-1]
+        ordered.append(fragment)
+        cursor = fragment[-1]
+        remaining[best_index] = False
 
     pieces: list[np.ndarray] = []
     previous: np.ndarray | None = None

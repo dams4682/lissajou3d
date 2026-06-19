@@ -6,6 +6,7 @@ import wave
 import numpy as np
 import pytest
 
+import xy_audio_3d.render as render_module
 from xy_audio.engine import export_wav
 from xy_audio_3d.geometry import Transform, load_stl_wireframe, make_shape, project_vertices, project_wireframe
 from xy_audio_3d.motion import MotionTrack, MotionKeyframe
@@ -222,6 +223,31 @@ def test_build_3d_xy_audio_accepts_high_scan_rate():
     assert audio.shape == (480, 2)
     assert np.isfinite(audio).all()
     assert float(np.max(np.abs(audio))) <= 1.0
+
+
+def test_geometry_rate_limits_projection_rebuilds(monkeypatch):
+    calls = 0
+    original = render_module.project_wireframe
+
+    def counted_project_wireframe(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(render_module, "project_wireframe", counted_project_wireframe)
+    config = Render3DConfig(
+        shape="cube",
+        duration=1.0,
+        sample_rate=8_000,
+        scan_rate_hz=40,
+        geometry_rate_hz=5,
+        smoothing=1,
+    )
+
+    audio = build_3d_xy_audio(config)
+
+    assert audio.shape == (8_000, 2)
+    assert calls == 5
 
 
 def test_wire_walk_avoids_non_edge_jumps_for_cube():

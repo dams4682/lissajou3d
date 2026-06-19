@@ -42,7 +42,8 @@ If there is no recorded motion, the renderer creates an automatic rotation.
 `xy_audio_3d.render`
 
 - samples the motion over the requested duration
-- projects the wireframe to XY for each scan cycle
+- projects the wireframe to XY for each geometry frame
+- reuses cached geometry frames across scan cycles when `Geometry FPS` is lower than `Scan rate Hz`
 - uses `wire_walk` by default so the beam follows connected edges instead of drawing diagonal retrace lines
 - resamples the line path into audio samples
 - normalizes and exports stereo XY data
