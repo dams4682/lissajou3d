@@ -477,7 +477,7 @@ class MainWindow(QMainWindow):
         self.perspective = _double_spin(0.001, 1_000_000.0, 2.8, 0.1)
         self.view_scale = _double_spin(0.001, 1_000_000.0, 2.4, 0.1)
         self.trace_mode = QComboBox()
-        self.trace_mode.addItems(["wire_walk", "fast_jumps"])
+        self.trace_mode.addItems(["wire_walk", "nearest_fragments", "fast_jumps"])
         shape_form.addRow("Shape", self.shape)
         shape_form.addRow("Primitive", self.use_shape_btn)
         shape_form.addRow("STL", self.import_stl_btn)

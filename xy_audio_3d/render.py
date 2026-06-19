@@ -113,6 +113,8 @@ def _contours_to_trajectory(contours: list[np.ndarray], mode: str = "wire_walk")
         return np.zeros((2, 2), dtype=np.float64)
     if mode == "wire_walk":
         return _wire_walk_trajectory(contours)
+    if mode == "nearest_fragments":
+        return _nearest_fragment_trajectory(contours)
     pieces: list[np.ndarray] = []
     previous: np.ndarray | None = None
     for contour in contours:
@@ -120,6 +122,47 @@ def _contours_to_trajectory(contours: list[np.ndarray], mode: str = "wire_walk")
             pieces.append(np.linspace(previous, contour[0], 4, dtype=np.float64)[1:-1])
         pieces.append(contour)
         previous = contour[-1]
+    return np.vstack(pieces)
+
+
+def _nearest_fragment_trajectory(contours: list[np.ndarray]) -> np.ndarray:
+    fragments = [np.asarray(contour, dtype=np.float64) for contour in contours if len(contour) >= 2]
+    if not fragments:
+        return np.vstack(contours)
+
+    remaining = fragments[:]
+    current = remaining.pop(0)
+    ordered = [current]
+    cursor = current[-1]
+
+    while remaining:
+        best_index = 0
+        best_reverse = False
+        best_distance = math.inf
+        for index, fragment in enumerate(remaining):
+            start_distance = float(np.linalg.norm(fragment[0] - cursor))
+            end_distance = float(np.linalg.norm(fragment[-1] - cursor))
+            if start_distance < best_distance:
+                best_index = index
+                best_reverse = False
+                best_distance = start_distance
+            if end_distance < best_distance:
+                best_index = index
+                best_reverse = True
+                best_distance = end_distance
+        next_fragment = remaining.pop(best_index)
+        if best_reverse:
+            next_fragment = next_fragment[::-1]
+        ordered.append(next_fragment)
+        cursor = next_fragment[-1]
+
+    pieces: list[np.ndarray] = []
+    previous: np.ndarray | None = None
+    for fragment in ordered:
+        if previous is not None:
+            pieces.append(np.linspace(previous, fragment[0], 2, dtype=np.float64)[1:])
+        pieces.append(fragment)
+        previous = fragment[-1]
     return np.vstack(pieces)
 
 

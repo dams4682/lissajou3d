@@ -246,3 +246,20 @@ def test_wire_walk_avoids_non_edge_jumps_for_cube():
     assert len(walk_edges) >= len(allowed_edges)
     assert walk_edges
     assert set(walk_edges).issubset(allowed_edges)
+
+
+def test_nearest_fragments_reorders_disconnected_segments():
+    contours = [
+        np.array([[0.0, 0.0], [1.0, 0.0]]),
+        np.array([[100.0, 0.0], [101.0, 0.0]]),
+        np.array([[2.0, 0.0], [3.0, 0.0]]),
+    ]
+
+    fast = _contours_to_trajectory(contours, mode="fast_jumps")
+    nearest = _contours_to_trajectory(contours, mode="nearest_fragments")
+
+    fast_distance = float(np.sum(np.linalg.norm(np.diff(fast, axis=0), axis=1)))
+    nearest_distance = float(np.sum(np.linalg.norm(np.diff(nearest, axis=0), axis=1)))
+
+    assert nearest_distance < fast_distance
+    assert nearest_distance == pytest.approx(101.0)

@@ -140,6 +140,7 @@ examples\tetrahedron_ascii.stl
 - `Scale`: final XY amplitude.
 - `Trace mode`:
   - `wire_walk`: follows connected wire edges to avoid diagonal retrace lines.
+  - `nearest_fragments`: orders disconnected projected fragments by nearest endpoint. Useful for STL silhouettes.
   - `fast_jumps`: draws each edge in order with direct travel between edges.
 - `Smoothing`: light moving-average smoothing.
 - `Normalize`: prevents clipping.

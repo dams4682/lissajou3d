@@ -111,6 +111,7 @@ examples\tetrahedron_ascii.stl
 - `Camera scale`: cadrage de la caméra. Plus la valeur est grande, plus l'objet paraît petit.
 - `Trace mode`:
   - `wire_walk`: suit les arêtes connectées pour éviter les diagonales parasites.
+  - `nearest_fragments`: ordonne les fragments projetés par point le plus proche. Utile pour les silhouettes STL.
   - `fast_jumps`: dessine les arêtes dans l'ordre avec des déplacements directs entre elles.
 - `Projection`: `orthographic` est plus stable; `perspective` donne plus de profondeur.
 - `Invert Y`: activé par défaut pour un affichage cohérent dans Bespoke.
