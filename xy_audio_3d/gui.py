@@ -470,6 +470,7 @@ class MainWindow(QMainWindow):
         self.render_worker: RenderWorker | None = None
         self.render_export_path: str | None = None
         self.render_play_after = False
+        self.advanced_rows: list[tuple[QWidget | None, QWidget]] = []
         self.temp_playback_files: list[Path] = []
         self._build_ui()
         self._apply_theme()
@@ -485,6 +486,11 @@ class MainWindow(QMainWindow):
         controls.setMaximumWidth(560)
         controls_layout = QVBoxLayout(controls)
         controls_layout.setSpacing(14)
+
+        self.advanced_mode = QCheckBox("Advanced mode")
+        self.advanced_mode.setChecked(False)
+        self.advanced_mode.stateChanged.connect(self._update_advanced_visibility)
+        controls_layout.addWidget(self.advanced_mode)
 
         shape_box = QGroupBox("3D Object")
         shape_form = QFormLayout(shape_box)
@@ -509,18 +515,19 @@ class MainWindow(QMainWindow):
         self.view_scale = _double_spin(0.001, 1_000_000.0, 2.4, 0.1)
         self.trace_mode = QComboBox()
         self.trace_mode.addItems(["wire_walk", "silhouette_loops", "nearest_fragments", "fast_jumps"])
-        shape_form.addRow("Shape", self.shape)
-        shape_form.addRow("Primitive", self.use_shape_btn)
-        shape_form.addRow("STL", self.import_stl_btn)
-        shape_form.addRow("STL edge mode", self.stl_edge_mode)
-        shape_form.addRow("Feature angle", self.stl_feature_angle)
-        shape_form.addRow("Max STL edges", self.stl_max_edges)
-        shape_form.addRow("Apply", self.apply_stl_btn)
-        shape_form.addRow("Source", self.stl_status)
-        shape_form.addRow("Projection", self.projection)
-        shape_form.addRow("Perspective", self.perspective)
-        shape_form.addRow("Camera scale", self.view_scale)
-        shape_form.addRow("Trace mode", self.trace_mode)
+        self.trace_mode.setCurrentText("silhouette_loops")
+        self._add_form_row(shape_form, "Shape", self.shape)
+        self._add_form_row(shape_form, "Primitive", self.use_shape_btn)
+        self._add_form_row(shape_form, "STL", self.import_stl_btn)
+        self._add_form_row(shape_form, "STL edge mode", self.stl_edge_mode)
+        self._add_form_row(shape_form, "Feature angle", self.stl_feature_angle, advanced=True)
+        self._add_form_row(shape_form, "Max STL edges", self.stl_max_edges, advanced=True)
+        self._add_form_row(shape_form, "Apply", self.apply_stl_btn, advanced=True)
+        self._add_form_row(shape_form, "Source", self.stl_status)
+        self._add_form_row(shape_form, "Projection", self.projection, advanced=True)
+        self._add_form_row(shape_form, "Perspective", self.perspective, advanced=True)
+        self._add_form_row(shape_form, "Camera scale", self.view_scale, advanced=True)
+        self._add_form_row(shape_form, "Trace mode", self.trace_mode)
         controls_layout.addWidget(shape_box)
 
         render_box = QGroupBox("Audio Render")
@@ -545,16 +552,16 @@ class MainWindow(QMainWindow):
         self.invert_x = QCheckBox()
         self.invert_y = QCheckBox()
         self.invert_y.setChecked(True)
-        form.addRow("Duration", self.duration)
-        form.addRow("Sample rate", self.sample_rate)
-        form.addRow("Scan rate Hz", self.scan_rate_hz)
-        form.addRow("Geometry FPS", self.geometry_rate_hz)
-        form.addRow("Scan note", self.scan_note)
-        form.addRow("Scale", self.scale)
-        form.addRow("Smoothing", self.smoothing)
-        form.addRow("Normalize", self.normalize)
-        form.addRow("Invert X", self.invert_x)
-        form.addRow("Invert Y", self.invert_y)
+        self._add_form_row(form, "Duration", self.duration, advanced=True)
+        self._add_form_row(form, "Sample rate", self.sample_rate, advanced=True)
+        self._add_form_row(form, "Scan rate Hz", self.scan_rate_hz)
+        self._add_form_row(form, "Geometry FPS", self.geometry_rate_hz)
+        self._add_form_row(form, "Scan note", self.scan_note, advanced=True)
+        self._add_form_row(form, "Scale", self.scale, advanced=True)
+        self._add_form_row(form, "Smoothing", self.smoothing, advanced=True)
+        self._add_form_row(form, "Normalize", self.normalize)
+        self._add_form_row(form, "Invert X", self.invert_x)
+        self._add_form_row(form, "Invert Y", self.invert_y)
         controls_layout.addWidget(render_box)
 
         record_row = QHBoxLayout()
@@ -607,6 +614,19 @@ class MainWindow(QMainWindow):
         self.setStatusBar(QStatusBar())
         self.statusBar().showMessage("Ready")
         self._connect_render_dirty_signals()
+        self._update_advanced_visibility()
+
+    def _add_form_row(self, form: QFormLayout, label: str, field: QWidget, advanced: bool = False) -> None:
+        form.addRow(label, field)
+        if advanced:
+            self.advanced_rows.append((form.labelForField(field), field))
+
+    def _update_advanced_visibility(self, *_args) -> None:
+        visible = self.advanced_mode.isChecked()
+        for label, field in self.advanced_rows:
+            if label is not None:
+                label.setVisible(visible)
+            field.setVisible(visible)
 
     def _apply_theme(self) -> None:
         app = QApplication.instance()

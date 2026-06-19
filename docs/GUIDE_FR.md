@@ -56,6 +56,8 @@ dist\Lissajou3D\Lissajou3D.exe
 
 ## Utilisation
 
+Lissajou3D démarre en mode simple. Les contrôles courants pour choisir/importer une forme, enregistrer un mouvement, prévisualiser et exporter sont visibles. Cochez `Advanced mode` en haut du panneau pour afficher les réglages techniques: angle de feature, limite d'arêtes STL, projection, camera scale, durée, sample rate, scan note, scale et smoothing.
+
 1. Choisir une forme: `cube`, `pyramid`, `sphere`.
 2. Cliquer sur `Use Shape` pour revenir à la forme intégrée sélectionnée après avoir utilisé un STL.
 3. Ou cliquer sur `Import STL` pour charger un modèle 3D personnel en fil de fer.

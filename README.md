@@ -77,23 +77,21 @@ dist\Lissajou3D\Lissajou3D.exe
 
 ## GUI Workflow
 
+Lissajou3D starts in simple mode. Common import, movement, render, and export controls are visible. Enable `Advanced mode` at the top of the panel to show technical controls such as feature angle, max STL edges, projection, camera scale, duration, sample rate, scan note, scale, and smoothing.
+
 1. Launch `Lissajou3D.exe` or run `python app_3d.py`.
 2. Choose a shape: `cube`, `pyramid`, or `sphere`.
 3. Click `Use Shape` to return to the selected built-in shape after using an STL.
 4. Or click `Import STL` to load a custom 3D model as a wireframe.
-5. Choose projection:
-   - `orthographic`: stable technical view.
-   - `perspective`: stronger 3D depth.
-6. Adjust `Camera scale` if the object is too large or too small.
-7. Click `Record Movement`.
-8. Manipulate the object:
+5. Click `Record Movement`.
+6. Manipulate the object:
    - left mouse drag: rotate
    - right mouse drag: move
    - mouse wheel: zoom
-9. Click `Stop Recording`.
-10. Click `Render Preview`.
-11. Click `Play XY` to preview the audio signal.
-12. Click `Export WAV`.
+7. Click `Stop Recording`.
+8. Click `Render Preview`.
+9. Click `Play XY` to preview the audio signal.
+10. Click `Export WAV`.
 
 If no movement is recorded, Lissajou3D exports an automatic slow rotation. This is useful for quick testing.
 

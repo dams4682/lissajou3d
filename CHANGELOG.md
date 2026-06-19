@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Add beginner-friendly simple mode with an `Advanced mode` toggle for technical controls.
 - Add `silhouette_loops` trace mode to assemble connected STL silhouette fragments before drawing.
 - Add a GUI progress bar for background WAV rendering.
 - Add `Geometry FPS` to cache expensive 3D/STL silhouette frames during WAV export.
