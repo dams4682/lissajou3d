@@ -259,6 +259,7 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(root)
         self.setStatusBar(QStatusBar())
         self.statusBar().showMessage("Ready")
+        self._connect_render_dirty_signals()
 
     def _apply_theme(self) -> None:
         app = QApplication.instance()
@@ -309,13 +310,37 @@ class MainWindow(QMainWindow):
     def _update_viewer_projection(self) -> None:
         self.viewer.set_projection(self.projection.currentText(), self.perspective.value(), self.view_scale.value())
 
+    def _connect_render_dirty_signals(self) -> None:
+        for combo in (self.shape, self.projection, self.trace_mode, self.scan_note):
+            combo.currentTextChanged.connect(self._mark_render_dirty)
+        for spin in (
+            self.perspective,
+            self.view_scale,
+            self.duration,
+            self.sample_rate,
+            self.scan_rate_hz,
+            self.scale,
+            self.smoothing,
+        ):
+            spin.valueChanged.connect(self._mark_render_dirty)
+        for checkbox in (self.normalize, self.invert_x, self.invert_y):
+            checkbox.stateChanged.connect(self._mark_render_dirty)
+
+    def _mark_render_dirty(self, *_args) -> None:
+        if self.current_audio is None:
+            return
+        self.current_audio = None
+        self.statusBar().showMessage("Settings changed; render will be rebuilt before playback/export")
+
     def on_transform_changed(self, transform: Transform) -> None:
         if self.recording:
+            self.current_audio = None
             self.motion.add(transform)
             self.statusBar().showMessage(f"Recording movement: {self.motion.duration:.2f}s")
 
     def toggle_recording(self) -> None:
         if not self.recording:
+            self.current_audio = None
             self.motion.start(self.viewer.transform)
             self.recording = True
             self.record_btn.setText("Stop Recording")
