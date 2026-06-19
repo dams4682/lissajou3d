@@ -16,6 +16,16 @@ Imported STL meshes are filtered, centered, and normalized once at import time. 
 
 The projection uses a stable camera scale. It does not auto-fit every frame, because auto-fitting makes a rotating cube appear to grow and shrink unnaturally.
 
+## GUI Preview
+
+`xy_audio_3d.gui`
+
+- uploads wireframe vertices and edge indices to OpenGL buffers
+- draws the interactive preview with a small GPU shader
+- keeps the mouse interaction and controls in Qt widgets
+
+The OpenGL preview is separate from WAV generation. Audio export still uses the CPU render path in `xy_audio_3d.render`, because the WAV needs deterministic sample arrays rather than screen pixels.
+
 ## Motion
 
 `xy_audio_3d.motion`

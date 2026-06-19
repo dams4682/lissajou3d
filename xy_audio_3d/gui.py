@@ -6,7 +6,8 @@ import winsound
 
 import numpy as np
 from PyQt6.QtCore import QPoint, Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QFont, QPainter, QPalette, QPen
+from PyQt6.QtGui import QColor, QFont, QMatrix4x4, QPainter, QPalette
+from PyQt6.QtOpenGL import QOpenGLBuffer, QOpenGLFunctions_2_0, QOpenGLShader, QOpenGLShaderProgram
 from PyQt6.QtOpenGLWidgets import QOpenGLWidget
 from PyQt6.QtWidgets import (
     QApplication,
@@ -31,13 +32,18 @@ from PyQt6.QtWidgets import (
 
 from xy_audio.audition import write_temp_wav
 from xy_audio.engine import export_wav
-from .geometry import Transform, Wireframe, load_stl_wireframe, make_shape, project_wireframe
+from .geometry import Transform, Wireframe, load_stl_wireframe, make_shape
 from .motion import MotionTrack, copy_transform
 from .render import Render3DConfig, build_3d_xy_audio
 
 
 class WireframeViewer(QOpenGLWidget):
     transform_changed = pyqtSignal(object)
+    GL_COLOR_BUFFER_BIT = 0x00004000
+    GL_DEPTH_BUFFER_BIT = 0x00000100
+    GL_DEPTH_TEST = 0x0B71
+    GL_LINES = 0x0001
+    GL_UNSIGNED_INT = 0x1405
 
     def __init__(self) -> None:
         super().__init__()
@@ -49,6 +55,16 @@ class WireframeViewer(QOpenGLWidget):
         self.view_scale = 2.4
         self.transform = Transform(rotation_x=25.0, rotation_y=-30.0, rotation_z=0.0, zoom=1.0)
         self._last_pos: QPoint | None = None
+        self.functions: QOpenGLFunctions_2_0 | None = None
+        self.program: QOpenGLShaderProgram | None = None
+        self.vertex_buffer: QOpenGLBuffer | None = None
+        self.index_buffer: QOpenGLBuffer | None = None
+        self.grid_vertex_buffer: QOpenGLBuffer | None = None
+        self.grid_index_buffer: QOpenGLBuffer | None = None
+        self.index_count = 0
+        self.grid_index_count = 0
+        self.pending_wireframe: Wireframe | None = None
+        self.current_wireframe: Wireframe = make_shape("cube")
         self.setMinimumSize(520, 420)
         self.setMouseTracking(True)
 
@@ -56,11 +72,15 @@ class WireframeViewer(QOpenGLWidget):
         self.shape_name = name
         self.object_label = name
         self.custom_wireframe = None
+        self.current_wireframe = make_shape(name)
+        self._upload_wireframe_later(self.current_wireframe)
         self.update()
 
     def set_wireframe(self, wireframe: Wireframe, label: str) -> None:
         self.custom_wireframe = wireframe
         self.object_label = label
+        self.current_wireframe = wireframe
+        self._upload_wireframe_later(wireframe)
         self.update()
 
     def set_projection(self, projection: str, perspective: float, view_scale: float = 2.4) -> None:
@@ -74,43 +94,70 @@ class WireframeViewer(QOpenGLWidget):
         self.transform_changed.emit(copy_transform(self.transform))
         self.update()
 
+    def initializeGL(self) -> None:  # noqa: N802 - Qt naming
+        self.functions = QOpenGLFunctions_2_0()
+        self.functions.initializeOpenGLFunctions()
+        self.functions.glClearColor(0.063, 0.078, 0.094, 1.0)
+        self.functions.glEnable(self.GL_DEPTH_TEST)
+        self.program = QOpenGLShaderProgram(self)
+        self.program.addShaderFromSourceCode(
+            QOpenGLShader.ShaderTypeBit.Vertex,
+            """
+            attribute vec3 position;
+            uniform mat4 mvp;
+            void main() {
+                gl_Position = mvp * vec4(position, 1.0);
+            }
+            """,
+        )
+        self.program.addShaderFromSourceCode(
+            QOpenGLShader.ShaderTypeBit.Fragment,
+            """
+            uniform vec4 color;
+            void main() {
+                gl_FragColor = color;
+            }
+            """,
+        )
+        self.program.bindAttributeLocation("position", 0)
+        self.program.link()
+
+        self.vertex_buffer = QOpenGLBuffer(QOpenGLBuffer.Type.VertexBuffer)
+        self.vertex_buffer.create()
+        self.vertex_buffer.setUsagePattern(QOpenGLBuffer.UsagePattern.StaticDraw)
+        self.index_buffer = QOpenGLBuffer(QOpenGLBuffer.Type.IndexBuffer)
+        self.index_buffer.create()
+        self.index_buffer.setUsagePattern(QOpenGLBuffer.UsagePattern.StaticDraw)
+        self.grid_vertex_buffer = QOpenGLBuffer(QOpenGLBuffer.Type.VertexBuffer)
+        self.grid_vertex_buffer.create()
+        self.grid_vertex_buffer.setUsagePattern(QOpenGLBuffer.UsagePattern.StaticDraw)
+        self.grid_index_buffer = QOpenGLBuffer(QOpenGLBuffer.Type.IndexBuffer)
+        self.grid_index_buffer.create()
+        self.grid_index_buffer.setUsagePattern(QOpenGLBuffer.UsagePattern.StaticDraw)
+
+        self._upload_grid()
+        self._upload_wireframe(self.current_wireframe)
+
+    def resizeGL(self, width: int, height: int) -> None:  # noqa: N802 - Qt naming
+        if self.functions:
+            self.functions.glViewport(0, 0, max(1, width), max(1, height))
+
     def paintGL(self) -> None:  # noqa: N802 - Qt naming
+        if not self.functions or not self.program:
+            return
+        if self.pending_wireframe is not None:
+            self._upload_wireframe(self.pending_wireframe)
+            self.pending_wireframe = None
+
+        self.functions.glClear(self.GL_COLOR_BUFFER_BIT | self.GL_DEPTH_BUFFER_BIT)
+        self.program.bind()
+        self.functions.glLineWidth(1.0)
+        self._draw_lines(self.grid_vertex_buffer, self.grid_index_buffer, self.grid_index_count, self._grid_matrix(), QColor("#26313a"))
+        self.functions.glLineWidth(1.6)
+        self._draw_lines(self.vertex_buffer, self.index_buffer, self.index_count, self._object_matrix(), QColor("#00d1b2"))
+        self.program.release()
+
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.fillRect(self.rect(), QColor("#101418"))
-
-        side = min(self.width(), self.height()) - 48
-        left = (self.width() - side) / 2
-        top = (self.height() - side) / 2
-
-        painter.setPen(QPen(QColor("#26313a"), 1))
-        for i in range(5):
-            x = left + side * i / 4
-            y = top + side * i / 4
-            painter.drawLine(int(x), int(top), int(x), int(top + side))
-            painter.drawLine(int(left), int(y), int(left + side), int(y))
-        painter.setPen(QPen(QColor("#3a4652"), 1))
-        painter.drawRect(int(left), int(top), int(side), int(side))
-
-        try:
-            wireframe = self.custom_wireframe or make_shape(self.shape_name)
-            contours = project_wireframe(
-                wireframe,
-                self.transform,
-                projection=self.projection,
-                perspective=self.perspective,
-                view_scale=self.view_scale,
-            )
-        except Exception:
-            contours = []
-
-        painter.setPen(QPen(QColor("#00d1b2"), 2.0))
-        for contour in contours:
-            a, b = contour
-            x1, y1 = self._map_point(a, left, top, side)
-            x2, y2 = self._map_point(b, left, top, side)
-            painter.drawLine(x1, y1, x2, y2)
-
         painter.setPen(QColor("#aab4bf"))
         painter.drawText(16, 24, f"{self.object_label} - drag to rotate, wheel to zoom, right-drag to move")
         painter.end()
@@ -145,11 +192,107 @@ class WireframeViewer(QOpenGLWidget):
         self.transform_changed.emit(copy_transform(self.transform))
         self.update()
 
-    @staticmethod
-    def _map_point(point: np.ndarray, left: float, top: float, side: float) -> tuple[int, int]:
-        x = left + (float(point[0]) + 1.0) * 0.5 * side
-        y = top + (1.0 - (float(point[1]) + 1.0) * 0.5) * side
-        return int(x), int(y)
+    def _upload_wireframe_later(self, wireframe: Wireframe) -> None:
+        if self.context() is None or not self.isValid():
+            self.pending_wireframe = wireframe
+            return
+        self.makeCurrent()
+        self._upload_wireframe(wireframe)
+        self.doneCurrent()
+
+    def _upload_wireframe(self, wireframe: Wireframe) -> None:
+        if not self.vertex_buffer or not self.index_buffer:
+            return
+        vertices = np.asarray(wireframe.vertices, dtype=np.float32)
+        indices = np.asarray([index for edge in wireframe.edges for index in edge], dtype=np.uint32)
+        self.vertex_buffer.bind()
+        self.vertex_buffer.allocate(vertices.tobytes(), vertices.nbytes)
+        self.vertex_buffer.release()
+        self.index_buffer.bind()
+        self.index_buffer.allocate(indices.tobytes(), indices.nbytes)
+        self.index_buffer.release()
+        self.index_count = int(len(indices))
+
+    def _upload_grid(self) -> None:
+        if not self.grid_vertex_buffer or not self.grid_index_buffer:
+            return
+        vertices: list[tuple[float, float, float]] = []
+        indices: list[int] = []
+
+        def add_line(a: tuple[float, float, float], b: tuple[float, float, float]) -> None:
+            start = len(vertices)
+            vertices.extend((a, b))
+            indices.extend((start, start + 1))
+
+        for i in range(5):
+            value = -1.0 + i * 0.5
+            add_line((value, -1.0, 0.0), (value, 1.0, 0.0))
+            add_line((-1.0, value, 0.0), (1.0, value, 0.0))
+        add_line((-1.0, -1.0, 0.0), (1.0, -1.0, 0.0))
+        add_line((1.0, -1.0, 0.0), (1.0, 1.0, 0.0))
+        add_line((1.0, 1.0, 0.0), (-1.0, 1.0, 0.0))
+        add_line((-1.0, 1.0, 0.0), (-1.0, -1.0, 0.0))
+
+        vertex_array = np.asarray(vertices, dtype=np.float32)
+        index_array = np.asarray(indices, dtype=np.uint32)
+        self.grid_vertex_buffer.bind()
+        self.grid_vertex_buffer.allocate(vertex_array.tobytes(), vertex_array.nbytes)
+        self.grid_vertex_buffer.release()
+        self.grid_index_buffer.bind()
+        self.grid_index_buffer.allocate(index_array.tobytes(), index_array.nbytes)
+        self.grid_index_buffer.release()
+        self.grid_index_count = int(len(index_array))
+
+    def _draw_lines(
+        self,
+        vertex_buffer: QOpenGLBuffer | None,
+        index_buffer: QOpenGLBuffer | None,
+        index_count: int,
+        matrix: QMatrix4x4,
+        color: QColor,
+    ) -> None:
+        if not self.functions or not self.program or not vertex_buffer or not index_buffer or index_count <= 0:
+            return
+        self.program.setUniformValue("mvp", matrix)
+        self.program.setUniformValue("color", color)
+        vertex_buffer.bind()
+        index_buffer.bind()
+        self.program.enableAttributeArray(0)
+        self.program.setAttributeBuffer(0, 0x1406, 0, 3, 0)
+        self.functions.glDrawElements(self.GL_LINES, index_count, self.GL_UNSIGNED_INT, None)
+        self.program.disableAttributeArray(0)
+        index_buffer.release()
+        vertex_buffer.release()
+
+    def _object_matrix(self) -> QMatrix4x4:
+        matrix = self._projection_matrix()
+        model = QMatrix4x4()
+        model.translate(float(self.transform.offset_x), float(self.transform.offset_y), 0.0)
+        model.scale(max(0.001, float(self.transform.zoom)))
+        model.rotate(float(self.transform.rotation_z), 0.0, 0.0, 1.0)
+        model.rotate(float(self.transform.rotation_y), 0.0, 1.0, 0.0)
+        model.rotate(float(self.transform.rotation_x), 1.0, 0.0, 0.0)
+        return matrix * model
+
+    def _grid_matrix(self) -> QMatrix4x4:
+        matrix = QMatrix4x4()
+        matrix.ortho(-1.0, 1.0, -1.0, 1.0, -1.0, 1.0)
+        return matrix
+
+    def _projection_matrix(self) -> QMatrix4x4:
+        aspect = max(0.001, self.width() / max(1, self.height()))
+        scale = max(0.001, float(self.view_scale))
+        matrix = QMatrix4x4()
+        if self.projection == "perspective":
+            matrix.perspective(45.0, aspect, 0.1, 100.0)
+            view = QMatrix4x4()
+            view.translate(0.0, 0.0, -max(1.2, float(self.perspective)))
+            return matrix * view
+        if aspect >= 1.0:
+            matrix.ortho(-scale * aspect, scale * aspect, -scale, scale, -100.0, 100.0)
+        else:
+            matrix.ortho(-scale, scale, -scale / aspect, scale / aspect, -100.0, 100.0)
+        return matrix
 
 
 class MainWindow(QMainWindow):

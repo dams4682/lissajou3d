@@ -4,6 +4,8 @@ Lissajou3D transforme une forme 3D filaire animée en fichier WAV stéréo.
 
 Version actuelle: `v1.1.0`
 
+La preview 3D utilise OpenGL/GPU pour afficher les fils de fer plus rapidement. L'export WAV reste calculé par le moteur audio CPU.
+
 Dans le WAV:
 
 ```text

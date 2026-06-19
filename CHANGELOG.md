@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Replace the STL/shape preview renderer with an OpenGL GPU line renderer.
 - Add STL feature-edge filtering to remove flat triangulation lines.
 - Add `Max STL edges` so dense STL models can be reduced for both preview and WAV export.
 - Add GUI controls to reload the current STL with the selected reduction settings.

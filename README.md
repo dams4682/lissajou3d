@@ -25,7 +25,7 @@ This means the WAV is still a normal stereo audio file, but when routed to an XY
 ## Features
 
 - Standalone PyQt6 GUI.
-- Interactive 3D wireframe viewer.
+- Interactive OpenGL/GPU 3D wireframe viewer.
 - Built-in shapes: cube, pyramid, sphere.
 - STL wireframe import, ASCII or binary.
 - Record mouse-driven movement.
