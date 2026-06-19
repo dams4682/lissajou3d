@@ -96,6 +96,8 @@ For oscilloscope/Lissajous use, simple low-poly STL files work best. Very dense 
 STL reduction settings affect both the viewer and the exported WAV:
 
 - `STL edge mode`:
+  - `silhouette_feature`: keeps the view-dependent outline plus hard-angle edges. Best first choice for dense STL files.
+  - `silhouette_edges`: keeps only the view-dependent outline for the current object orientation.
   - `feature_edges`: keeps boundary edges and hard-angle edges, while removing flat triangulation lines.
   - `all_edges`: keeps every triangle edge from the STL.
 - `Feature angle`: minimum angle between neighboring triangle faces before their shared edge is kept.
@@ -105,10 +107,12 @@ STL reduction settings affect both the viewer and the exported WAV:
 For dense rounded objects such as chess pieces, start with:
 
 ```text
-STL edge mode: feature_edges
+STL edge mode: silhouette_feature
 Feature angle: 20 to 35
 Max STL edges: 3000 to 8000
 ```
+
+For very dense organic/rounded meshes, try `silhouette_feature` first. It changes the line set as the model rotates, which is closer to line-art rendering and avoids drawing the whole STL triangulation.
 
 ## GPU Preview
 

@@ -80,6 +80,8 @@ Pour un affichage oscilloscope/Lissajous, les STL simples et peu détaillés don
 Les réglages STL réduisent le modèle pour la preview et pour le WAV exporté:
 
 - `STL edge mode`:
+  - `silhouette_feature`: garde le contour dépendant de la vue plus les arêtes anguleuses. C'est le meilleur premier choix pour les STL très denses.
+  - `silhouette_edges`: garde seulement le contour dépendant de la vue selon l'orientation actuelle de l'objet.
   - `feature_edges`: garde les bords et les arêtes anguleuses, mais retire les lignes plates de triangulation.
   - `all_edges`: garde toutes les arêtes des triangles du STL.
 - `Feature angle`: angle minimum entre deux faces voisines pour garder leur arête commune.
@@ -89,10 +91,12 @@ Les réglages STL réduisent le modèle pour la preview et pour le WAV exporté:
 Pour un objet rond très maillé, par exemple une pièce d'échecs, essayez:
 
 ```text
-STL edge mode: feature_edges
+STL edge mode: silhouette_feature
 Feature angle: 20 à 35
 Max STL edges: 3000 à 8000
 ```
+
+Pour un STL organique ou très arrondi, essayez d'abord `silhouette_feature`. Les lignes changent quand le modèle tourne, ce qui ressemble plus à un rendu line-art et évite de dessiner toute la triangulation du STL.
 
 Un petit STL de test est inclus:
 

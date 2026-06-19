@@ -24,6 +24,12 @@ class Wireframe:
     edges: list[tuple[int, int]]
     source_edge_count: int | None = None
     source_vertex_count: int | None = None
+    edge_face_indices: np.ndarray | None = None
+    face_normals: np.ndarray | None = None
+    all_edges: list[tuple[int, int]] | None = None
+    feature_edges: list[tuple[int, int]] | None = None
+    line_mode: str = "static"
+    max_edges: int | None = None
 
 
 def make_shape(name: str, detail: int = 16) -> Wireframe:
@@ -39,7 +45,7 @@ def make_shape(name: str, detail: int = 16) -> Wireframe:
 
 def load_stl_wireframe(
     path: str | Path,
-    edge_mode: str = "feature_edges",
+    edge_mode: str = "silhouette_feature",
     feature_angle_degrees: float = 25.0,
     max_edges: int | None = 8_000,
 ) -> Wireframe:
@@ -199,7 +205,10 @@ def _wireframe_from_triangles(
 
     source_edge_count = len(edge_faces)
     source_vertex_count = len(vertices)
-    edges = _select_stl_edges(edge_faces, normals, edge_mode, feature_angle_degrees)
+    all_edges = list(edge_faces)
+    edge_face_indices = _edge_face_index_array(all_edges, edge_faces)
+    feature_edges = _select_feature_edges(edge_faces, normals, feature_angle_degrees)
+    edges = _select_static_edges(all_edges, feature_edges, edge_mode)
     edges = _limit_edges_by_length(edges, vertices, max_edges)
     if not vertices or not edges:
         raise ValueError("STL file does not contain a usable wireframe.")
@@ -208,6 +217,12 @@ def _wireframe_from_triangles(
         edges,
         source_edge_count=source_edge_count,
         source_vertex_count=source_vertex_count,
+        edge_face_indices=edge_face_indices,
+        face_normals=np.asarray(normals, dtype=np.float64),
+        all_edges=all_edges,
+        feature_edges=feature_edges,
+        line_mode=edge_mode,
+        max_edges=max_edges,
     )
 
 
@@ -220,15 +235,38 @@ def _triangle_normal(triangle: np.ndarray) -> np.ndarray:
     return normal / length
 
 
-def _select_stl_edges(
+def _edge_face_index_array(
+    edges: list[tuple[int, int]],
     edge_faces: dict[tuple[int, int], list[int]],
-    normals: list[np.ndarray],
+) -> np.ndarray:
+    face_indices = np.full((len(edges), 2), -1, dtype=np.int32)
+    for index, edge in enumerate(edges):
+        faces = edge_faces[edge]
+        face_indices[index, 0] = faces[0]
+        if len(faces) > 1:
+            face_indices[index, 1] = faces[1]
+    return face_indices
+
+
+def _select_static_edges(
+    all_edges: list[tuple[int, int]],
+    feature_edges: list[tuple[int, int]],
     edge_mode: str,
-    feature_angle_degrees: float,
 ) -> list[tuple[int, int]]:
     if edge_mode == "all_edges":
-        return list(edge_faces)
+        return all_edges
+    if edge_mode in {"feature_edges", "silhouette_feature"}:
+        return feature_edges
+    if edge_mode == "silhouette_edges":
+        return all_edges
+    return feature_edges
 
+
+def _select_feature_edges(
+    edge_faces: dict[tuple[int, int], list[int]],
+    normals: list[np.ndarray],
+    feature_angle_degrees: float,
+) -> list[tuple[int, int]]:
     threshold = max(0.0, min(180.0, float(feature_angle_degrees)))
     selected: list[tuple[int, int]] = []
     for edge, faces in edge_faces.items():
@@ -261,6 +299,39 @@ def _limit_edges_by_length(
         reverse=True,
     )
     return ranked[:max_edges]
+
+
+def _view_dependent_edges(wireframe: Wireframe, transform: Transform) -> list[tuple[int, int]]:
+    if wireframe.edge_face_indices is None or wireframe.face_normals is None:
+        return wireframe.edges
+    if wireframe.line_mode not in {"silhouette_edges", "silhouette_feature"}:
+        return wireframe.edges
+
+    rotation = rotation_matrix(transform)
+    normals = wireframe.face_normals @ rotation.T
+    facing = normals[:, 2] >= 0.0
+    face_pairs = wireframe.edge_face_indices
+    all_edges = wireframe.all_edges or wireframe.edges
+
+    front = face_pairs[:, 0]
+    back = face_pairs[:, 1]
+    boundary = back < 0
+    silhouette = boundary | (facing[front] != facing[np.maximum(back, 0)])
+    selected = [edge for edge, keep in zip(all_edges, silhouette) if bool(keep)]
+
+    if wireframe.line_mode == "silhouette_feature" and wireframe.feature_edges:
+        seen = {_edge_key(a, b) for a, b in selected}
+        for edge in wireframe.feature_edges:
+            key = _edge_key(edge[0], edge[1])
+            if key not in seen:
+                selected.append(edge)
+                seen.add(key)
+
+    return _limit_edges_by_length(selected, list(wireframe.vertices), wireframe.max_edges)
+
+
+def _edge_key(a: int, b: int) -> tuple[int, int]:
+    return (a, b) if a <= b else (b, a)
 
 
 def _normalize_vertices(vertices: np.ndarray) -> np.ndarray:
@@ -319,6 +390,7 @@ def project_wireframe(
     perspective: float = 2.8,
     view_scale: float = 2.4,
 ) -> list[np.ndarray]:
+    edges = wireframe_edges_for_transform(wireframe, transform)
     xy = project_vertices(
         wireframe.vertices,
         transform,
@@ -326,4 +398,8 @@ def project_wireframe(
         perspective=perspective,
         view_scale=view_scale,
     )
-    return [xy[[a, b]] for a, b in wireframe.edges]
+    return [xy[[a, b]] for a, b in edges]
+
+
+def wireframe_edges_for_transform(wireframe: Wireframe, transform: Transform) -> list[tuple[int, int]]:
+    return _view_dependent_edges(wireframe, transform)

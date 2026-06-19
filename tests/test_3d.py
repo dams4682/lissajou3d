@@ -73,6 +73,36 @@ endsolid square
     assert len(full.edges) == 5
 
 
+def test_silhouette_stl_import_uses_view_dependent_outline(tmp_path):
+    stl = tmp_path / "square.stl"
+    stl.write_text(
+        """solid square
+facet normal 0 0 1
+  outer loop
+    vertex 0 0 0
+    vertex 1 0 0
+    vertex 1 1 0
+  endloop
+endfacet
+facet normal 0 0 1
+  outer loop
+    vertex 0 0 0
+    vertex 1 1 0
+    vertex 0 1 0
+  endloop
+endfacet
+endsolid square
+""",
+        encoding="utf-8",
+    )
+
+    wireframe = load_stl_wireframe(stl, edge_mode="silhouette_edges", max_edges=None)
+    contours = project_wireframe(wireframe, Transform())
+
+    assert wireframe.source_edge_count == 5
+    assert len(contours) == 4
+
+
 def test_stl_import_can_limit_edges_for_audio_and_preview(tmp_path):
     stl = tmp_path / "tetrahedron.stl"
     stl.write_text(

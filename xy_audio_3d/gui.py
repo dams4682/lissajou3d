@@ -33,7 +33,7 @@ from PyQt6.QtWidgets import (
 
 from xy_audio.audition import write_temp_wav
 from xy_audio.engine import export_wav
-from .geometry import Transform, Wireframe, load_stl_wireframe, make_shape, project_wireframe
+from .geometry import Transform, Wireframe, load_stl_wireframe, make_shape, project_wireframe, wireframe_edges_for_transform
 from .motion import MotionTrack, copy_transform
 from .render import Render3DConfig, build_3d_xy_audio
 
@@ -155,6 +155,8 @@ class GpuWireframeViewer(QOpenGLWidget):
         self.functions.glLineWidth(1.0)
         self._draw_lines(self.grid_vertex_buffer, self.grid_index_buffer, self.grid_index_count, self._grid_matrix(), QColor("#26313a"))
         self.functions.glLineWidth(1.6)
+        if self.current_wireframe.line_mode in {"silhouette_edges", "silhouette_feature"}:
+            self._upload_indices(wireframe_edges_for_transform(self.current_wireframe, self.transform))
         self._draw_lines(self.vertex_buffer, self.index_buffer, self.index_count, self._object_matrix(), QColor("#00d1b2"))
         self.program.release()
 
@@ -205,10 +207,15 @@ class GpuWireframeViewer(QOpenGLWidget):
         if not self.vertex_buffer or not self.index_buffer:
             return
         vertices = np.asarray(wireframe.vertices, dtype=np.float32)
-        indices = np.asarray([index for edge in wireframe.edges for index in edge], dtype=np.uint32)
         self.vertex_buffer.bind()
         self.vertex_buffer.allocate(vertices.tobytes(), vertices.nbytes)
         self.vertex_buffer.release()
+        self._upload_indices(wireframe.edges)
+
+    def _upload_indices(self, edges: list[tuple[int, int]]) -> None:
+        if not self.index_buffer:
+            return
+        indices = np.asarray([index for edge in edges for index in edge], dtype=np.uint32)
         self.index_buffer.bind()
         self.index_buffer.allocate(indices.tobytes(), indices.nbytes)
         self.index_buffer.release()
@@ -460,7 +467,7 @@ class MainWindow(QMainWindow):
         self.apply_stl_btn = QPushButton("Apply STL Settings")
         self.apply_stl_btn.clicked.connect(self.reload_stl)
         self.stl_edge_mode = QComboBox()
-        self.stl_edge_mode.addItems(["feature_edges", "all_edges"])
+        self.stl_edge_mode.addItems(["silhouette_feature", "silhouette_edges", "feature_edges", "all_edges"])
         self.stl_feature_angle = _double_spin(0.0, 180.0, 25.0, 1.0)
         self.stl_max_edges = _spin(0, 1_000_000, 8_000, 500)
         self.stl_status = QLabel("Primitive shape")
