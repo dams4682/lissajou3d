@@ -2,6 +2,11 @@
 
 Lissajou3D converts animated 3D wireframe shapes into stereo audio that can be displayed on an XY oscilloscope or in Bespoke Synth's `lissajous` module.
 
+To use in Bespoke Synth you need to patch the .exe or just modify your .bsk to lissajous autocorrelation" : false
+
+I aslo creat a patch for BespokeSynth 1.3.0 https://github.com/dams4682/bespoke-lissajous-autocorrelation-default-off  , to separate xy channel 
+
+
 Current release: `v1.1.0`
 
 <img width="1595" height="841" alt="Capture d’écran 2026-06-19 005354" src="https://github.com/user-attachments/assets/48531ccc-ccf7-4892-8d8c-be5dc9958b02" />
