@@ -31,7 +31,7 @@ from PyQt6.QtWidgets import (
 
 from xy_audio.audition import write_temp_wav
 from xy_audio.engine import export_wav
-from .geometry import Transform, make_shape, project_wireframe
+from .geometry import Transform, Wireframe, load_stl_wireframe, make_shape, project_wireframe
 from .motion import MotionTrack, copy_transform
 from .render import Render3DConfig, build_3d_xy_audio
 
@@ -42,6 +42,8 @@ class WireframeViewer(QOpenGLWidget):
     def __init__(self) -> None:
         super().__init__()
         self.shape_name = "cube"
+        self.object_label = "cube"
+        self.custom_wireframe: Wireframe | None = None
         self.projection = "orthographic"
         self.perspective = 2.8
         self.view_scale = 2.4
@@ -52,6 +54,13 @@ class WireframeViewer(QOpenGLWidget):
 
     def set_shape(self, name: str) -> None:
         self.shape_name = name
+        self.object_label = name
+        self.custom_wireframe = None
+        self.update()
+
+    def set_wireframe(self, wireframe: Wireframe, label: str) -> None:
+        self.custom_wireframe = wireframe
+        self.object_label = label
         self.update()
 
     def set_projection(self, projection: str, perspective: float, view_scale: float = 2.4) -> None:
@@ -84,8 +93,9 @@ class WireframeViewer(QOpenGLWidget):
         painter.drawRect(int(left), int(top), int(side), int(side))
 
         try:
+            wireframe = self.custom_wireframe or make_shape(self.shape_name)
             contours = project_wireframe(
-                make_shape(self.shape_name),
+                wireframe,
                 self.transform,
                 projection=self.projection,
                 perspective=self.perspective,
@@ -102,7 +112,7 @@ class WireframeViewer(QOpenGLWidget):
             painter.drawLine(x1, y1, x2, y2)
 
         painter.setPen(QColor("#aab4bf"))
-        painter.drawText(16, 24, f"{self.shape_name} - drag to rotate, wheel to zoom, right-drag to move")
+        painter.drawText(16, 24, f"{self.object_label} - drag to rotate, wheel to zoom, right-drag to move")
         painter.end()
 
     def mousePressEvent(self, event) -> None:  # noqa: N802 - Qt naming
@@ -150,6 +160,8 @@ class MainWindow(QMainWindow):
         self.motion = MotionTrack()
         self.recording = False
         self.current_audio: np.ndarray | None = None
+        self.custom_wireframe: Wireframe | None = None
+        self.stl_path: Path | None = None
         self.temp_playback_files: list[Path] = []
         self._build_ui()
         self._apply_theme()
@@ -171,6 +183,12 @@ class MainWindow(QMainWindow):
         shape_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapAllRows)
         self.shape = QComboBox()
         self.shape.addItems(["cube", "pyramid", "sphere"])
+        self.use_shape_btn = QPushButton("Use Shape")
+        self.use_shape_btn.clicked.connect(lambda: self.select_primitive(self.shape.currentText()))
+        self.import_stl_btn = QPushButton("Import STL")
+        self.import_stl_btn.clicked.connect(self.import_stl_dialog)
+        self.stl_status = QLabel("Primitive shape")
+        self.stl_status.setWordWrap(True)
         self.projection = QComboBox()
         self.projection.addItems(["orthographic", "perspective"])
         self.perspective = _double_spin(0.001, 1_000_000.0, 2.8, 0.1)
@@ -178,6 +196,9 @@ class MainWindow(QMainWindow):
         self.trace_mode = QComboBox()
         self.trace_mode.addItems(["wire_walk", "fast_jumps"])
         shape_form.addRow("Shape", self.shape)
+        shape_form.addRow("Primitive", self.use_shape_btn)
+        shape_form.addRow("STL", self.import_stl_btn)
+        shape_form.addRow("Source", self.stl_status)
         shape_form.addRow("Projection", self.projection)
         shape_form.addRow("Perspective", self.perspective)
         shape_form.addRow("Camera scale", self.view_scale)
@@ -243,7 +264,7 @@ class MainWindow(QMainWindow):
 
         self.viewer = WireframeViewer()
         self.viewer.transform_changed.connect(self.on_transform_changed)
-        self.shape.currentTextChanged.connect(self.viewer.set_shape)
+        self.shape.currentTextChanged.connect(self.select_primitive)
         self.projection.currentTextChanged.connect(self._update_viewer_projection)
         self.perspective.valueChanged.connect(self._update_viewer_projection)
         self.view_scale.valueChanged.connect(self._update_viewer_projection)
@@ -310,6 +331,31 @@ class MainWindow(QMainWindow):
     def _update_viewer_projection(self) -> None:
         self.viewer.set_projection(self.projection.currentText(), self.perspective.value(), self.view_scale.value())
 
+    def select_primitive(self, name: str) -> None:
+        self.custom_wireframe = None
+        self.stl_path = None
+        self.stl_status.setText("Primitive shape")
+        self.viewer.set_shape(name)
+        self._mark_render_dirty()
+
+    def import_stl_dialog(self) -> None:
+        path_text, _ = QFileDialog.getOpenFileName(self, "Import STL Wireframe", "", "STL files (*.stl)")
+        if not path_text:
+            return
+        path = Path(path_text)
+        try:
+            wireframe = load_stl_wireframe(path)
+        except Exception as exc:
+            QMessageBox.critical(self, "STL import failed", str(exc))
+            return
+        self.custom_wireframe = wireframe
+        self.stl_path = path
+        label = f"STL: {path.stem}"
+        self.stl_status.setText(f"{path.name} - {len(wireframe.vertices)} vertices, {len(wireframe.edges)} edges")
+        self.viewer.set_wireframe(wireframe, label)
+        self._mark_render_dirty()
+        self.statusBar().showMessage(f"Imported STL: {path}")
+
     def _connect_render_dirty_signals(self) -> None:
         for combo in (self.shape, self.projection, self.trace_mode, self.scan_note):
             combo.currentTextChanged.connect(self._mark_render_dirty)
@@ -370,7 +416,7 @@ class MainWindow(QMainWindow):
         try:
             config = self._config()
             motion = self.motion if self.motion.keyframes else None
-            self.current_audio = build_3d_xy_audio(config, motion=motion)
+            self.current_audio = build_3d_xy_audio(config, motion=motion, wireframe=self.custom_wireframe)
         except Exception as exc:
             QMessageBox.critical(self, "3D render failed", str(exc))
             return

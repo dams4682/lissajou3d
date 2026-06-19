@@ -2,6 +2,7 @@
 
 Lissajou3D converts animated 3D wireframe shapes into stereo audio that can be displayed on an XY oscilloscope or in Bespoke Synth's `lissajous` module.
 
+Current release: `v1.1.0`
 
 <img width="1595" height="841" alt="Capture d’écran 2026-06-19 005354" src="https://github.com/user-attachments/assets/48531ccc-ccf7-4892-8d8c-be5dc9958b02" />
 The exported WAV uses this mapping:
@@ -26,6 +27,7 @@ This means the WAV is still a normal stereo audio file, but when routed to an XY
 - Standalone PyQt6 GUI.
 - Interactive 3D wireframe viewer.
 - Built-in shapes: cube, pyramid, sphere.
+- STL wireframe import, ASCII or binary.
 - Record mouse-driven movement.
 - Export stereo XY WAV.
 - Automatic rotating fallback when no motion is recorded.
@@ -67,21 +69,35 @@ dist\Lissajou3D\Lissajou3D.exe
 
 1. Launch `Lissajou3D.exe` or run `python app_3d.py`.
 2. Choose a shape: `cube`, `pyramid`, or `sphere`.
-3. Choose projection:
+3. Click `Use Shape` to return to the selected built-in shape after using an STL.
+4. Or click `Import STL` to load a custom 3D model as a wireframe.
+5. Choose projection:
    - `orthographic`: stable technical view.
    - `perspective`: stronger 3D depth.
-4. Adjust `Camera scale` if the object is too large or too small.
-5. Click `Record Movement`.
-6. Manipulate the object:
+6. Adjust `Camera scale` if the object is too large or too small.
+7. Click `Record Movement`.
+8. Manipulate the object:
    - left mouse drag: rotate
    - right mouse drag: move
    - mouse wheel: zoom
-7. Click `Stop Recording`.
-8. Click `Render Preview`.
-9. Click `Play XY` to preview the audio signal.
-10. Click `Export WAV`.
+9. Click `Stop Recording`.
+10. Click `Render Preview`.
+11. Click `Play XY` to preview the audio signal.
+12. Click `Export WAV`.
 
 If no movement is recorded, Lissajou3D exports an automatic slow rotation. This is useful for quick testing.
+
+## STL Import
+
+`Import STL` accepts ASCII STL and binary STL files. The triangles are converted to unique wireframe edges, then centered and normalized so the object fits the viewer and audio range.
+
+For oscilloscope/Lissajous use, simple low-poly STL files work best. Very dense meshes create many edges, which can render slowly and may look noisy because the beam has to draw too much geometry every scan.
+
+A small test model is included:
+
+```text
+examples\tetrahedron_ascii.stl
+```
 
 ## Audio Settings
 
@@ -141,8 +157,7 @@ examples\cube_3d_auto.wav
 
 ## Current Limitations
 
-- V1 supports simple wireframe shapes only.
-- STL import is not included yet.
+- STL import uses the triangle edges as a wireframe; it does not simplify dense meshes automatically.
 - Hidden-line removal is not implemented.
 - The output is a 2D projection of 3D motion, because normal stereo WAV only has X and Y channels.
 

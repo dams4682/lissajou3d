@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import math
+from pathlib import Path
+import struct
 
 import numpy as np
 
@@ -31,6 +33,14 @@ def make_shape(name: str, detail: int = 16) -> Wireframe:
     if shape in {"sphere", "sphere wire", "wire sphere"}:
         return sphere_wire(detail=detail)
     raise ValueError(f"Unknown 3D shape: {name}")
+
+
+def load_stl_wireframe(path: str | Path) -> Wireframe:
+    data = Path(path).read_bytes()
+    triangles = _read_binary_stl(data) if _looks_like_binary_stl(data) else _read_ascii_stl(data)
+    if not triangles:
+        raise ValueError("STL file does not contain any triangle.")
+    return _wireframe_from_triangles(triangles)
 
 
 def cube() -> Wireframe:
@@ -103,6 +113,88 @@ def sphere_wire(detail: int = 16) -> Wireframe:
     add_ring("xz")
     add_ring("yz")
     return Wireframe(np.asarray(vertices, dtype=np.float64), edges)
+
+
+def _looks_like_binary_stl(data: bytes) -> bool:
+    if len(data) < 84:
+        return False
+    triangle_count = struct.unpack_from("<I", data, 80)[0]
+    return len(data) >= 84 + triangle_count * 50
+
+
+def _read_binary_stl(data: bytes) -> list[np.ndarray]:
+    triangle_count = struct.unpack_from("<I", data, 80)[0]
+    triangles: list[np.ndarray] = []
+    offset = 84
+    for _ in range(triangle_count):
+        values = struct.unpack_from("<9f", data, offset + 12)
+        triangle = np.asarray(values, dtype=np.float64).reshape(3, 3)
+        if np.isfinite(triangle).all():
+            triangles.append(triangle)
+        offset += 50
+    return triangles
+
+
+def _read_ascii_stl(data: bytes) -> list[np.ndarray]:
+    text = data.decode("utf-8", errors="ignore")
+    vertices: list[list[float]] = []
+    triangles: list[np.ndarray] = []
+    for line in text.splitlines():
+        parts = line.strip().split()
+        if len(parts) == 4 and parts[0].lower() == "vertex":
+            try:
+                vertices.append([float(parts[1]), float(parts[2]), float(parts[3])])
+            except ValueError:
+                continue
+            if len(vertices) == 3:
+                triangle = np.asarray(vertices, dtype=np.float64)
+                if np.isfinite(triangle).all():
+                    triangles.append(triangle)
+                vertices = []
+    return triangles
+
+
+def _wireframe_from_triangles(triangles: list[np.ndarray]) -> Wireframe:
+    vertices: list[np.ndarray] = []
+    vertex_lookup: dict[tuple[int, int, int], int] = {}
+    edges: list[tuple[int, int]] = []
+    seen_edges: set[tuple[int, int]] = set()
+
+    def vertex_index(point: np.ndarray) -> int:
+        key = (
+            int(round(float(point[0]) * 1_000_000)),
+            int(round(float(point[1]) * 1_000_000)),
+            int(round(float(point[2]) * 1_000_000)),
+        )
+        if key not in vertex_lookup:
+            vertex_lookup[key] = len(vertices)
+            vertices.append(np.asarray(point, dtype=np.float64))
+        return vertex_lookup[key]
+
+    for triangle in triangles:
+        indexes = [vertex_index(point) for point in triangle]
+        for a, b in ((indexes[0], indexes[1]), (indexes[1], indexes[2]), (indexes[2], indexes[0])):
+            if a == b:
+                continue
+            key = (a, b) if a <= b else (b, a)
+            if key not in seen_edges:
+                seen_edges.add(key)
+                edges.append((a, b))
+
+    if not vertices or not edges:
+        raise ValueError("STL file does not contain a usable wireframe.")
+    return Wireframe(_normalize_vertices(np.asarray(vertices, dtype=np.float64)), edges)
+
+
+def _normalize_vertices(vertices: np.ndarray) -> np.ndarray:
+    normalized = np.asarray(vertices, dtype=np.float64).copy()
+    mins = np.min(normalized, axis=0)
+    maxs = np.max(normalized, axis=0)
+    normalized -= (mins + maxs) / 2.0
+    span = float(np.max(maxs - mins))
+    if span > 0:
+        normalized /= span / 2.0
+    return normalized
 
 
 def apply_transform(vertices: np.ndarray, transform: Transform) -> np.ndarray:

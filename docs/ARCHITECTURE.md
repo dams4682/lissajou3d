@@ -7,8 +7,11 @@ Lissajou3D is intentionally small and split into three layers.
 `xy_audio_3d.geometry`
 
 - creates wireframe primitives
+- imports ASCII or binary STL files and converts triangle edges to wireframes
 - applies rotation, translation and zoom
 - projects 3D vertices to 2D XY coordinates
+
+Imported STL meshes are centered and normalized once at import time. The renderer then treats them exactly like built-in wireframe primitives.
 
 The projection uses a stable camera scale. It does not auto-fit every frame, because auto-fitting makes a rotating cube appear to grow and shrink unnaturally.
 
