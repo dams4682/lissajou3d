@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Add STL feature-edge filtering to remove flat triangulation lines.
+- Add `Max STL edges` so dense STL models can be reduced for both preview and WAV export.
+- Add GUI controls to reload the current STL with the selected reduction settings.
+
 ## v1.1.0
 
 - Add STL wireframe import for ASCII STL and binary STL files.

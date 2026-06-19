@@ -22,6 +22,8 @@ class Transform:
 class Wireframe:
     vertices: np.ndarray
     edges: list[tuple[int, int]]
+    source_edge_count: int | None = None
+    source_vertex_count: int | None = None
 
 
 def make_shape(name: str, detail: int = 16) -> Wireframe:
@@ -35,12 +37,22 @@ def make_shape(name: str, detail: int = 16) -> Wireframe:
     raise ValueError(f"Unknown 3D shape: {name}")
 
 
-def load_stl_wireframe(path: str | Path) -> Wireframe:
+def load_stl_wireframe(
+    path: str | Path,
+    edge_mode: str = "feature_edges",
+    feature_angle_degrees: float = 25.0,
+    max_edges: int | None = 8_000,
+) -> Wireframe:
     data = Path(path).read_bytes()
     triangles = _read_binary_stl(data) if _looks_like_binary_stl(data) else _read_ascii_stl(data)
     if not triangles:
         raise ValueError("STL file does not contain any triangle.")
-    return _wireframe_from_triangles(triangles)
+    return _wireframe_from_triangles(
+        triangles,
+        edge_mode=edge_mode,
+        feature_angle_degrees=feature_angle_degrees,
+        max_edges=max_edges,
+    )
 
 
 def cube() -> Wireframe:
@@ -154,11 +166,16 @@ def _read_ascii_stl(data: bytes) -> list[np.ndarray]:
     return triangles
 
 
-def _wireframe_from_triangles(triangles: list[np.ndarray]) -> Wireframe:
+def _wireframe_from_triangles(
+    triangles: list[np.ndarray],
+    edge_mode: str = "feature_edges",
+    feature_angle_degrees: float = 25.0,
+    max_edges: int | None = 8_000,
+) -> Wireframe:
     vertices: list[np.ndarray] = []
     vertex_lookup: dict[tuple[int, int, int], int] = {}
-    edges: list[tuple[int, int]] = []
-    seen_edges: set[tuple[int, int]] = set()
+    edge_faces: dict[tuple[int, int], list[int]] = {}
+    normals: list[np.ndarray] = []
 
     def vertex_index(point: np.ndarray) -> int:
         key = (
@@ -173,17 +190,77 @@ def _wireframe_from_triangles(triangles: list[np.ndarray]) -> Wireframe:
 
     for triangle in triangles:
         indexes = [vertex_index(point) for point in triangle]
+        normals.append(_triangle_normal(triangle))
         for a, b in ((indexes[0], indexes[1]), (indexes[1], indexes[2]), (indexes[2], indexes[0])):
             if a == b:
                 continue
             key = (a, b) if a <= b else (b, a)
-            if key not in seen_edges:
-                seen_edges.add(key)
-                edges.append((a, b))
+            edge_faces.setdefault(key, []).append(len(normals) - 1)
 
+    source_edge_count = len(edge_faces)
+    source_vertex_count = len(vertices)
+    edges = _select_stl_edges(edge_faces, normals, edge_mode, feature_angle_degrees)
+    edges = _limit_edges_by_length(edges, vertices, max_edges)
     if not vertices or not edges:
         raise ValueError("STL file does not contain a usable wireframe.")
-    return Wireframe(_normalize_vertices(np.asarray(vertices, dtype=np.float64)), edges)
+    return Wireframe(
+        _normalize_vertices(np.asarray(vertices, dtype=np.float64)),
+        edges,
+        source_edge_count=source_edge_count,
+        source_vertex_count=source_vertex_count,
+    )
+
+
+def _triangle_normal(triangle: np.ndarray) -> np.ndarray:
+    a, b, c = triangle
+    normal = np.cross(b - a, c - a)
+    length = float(np.linalg.norm(normal))
+    if length <= 1e-12:
+        return np.zeros(3, dtype=np.float64)
+    return normal / length
+
+
+def _select_stl_edges(
+    edge_faces: dict[tuple[int, int], list[int]],
+    normals: list[np.ndarray],
+    edge_mode: str,
+    feature_angle_degrees: float,
+) -> list[tuple[int, int]]:
+    if edge_mode == "all_edges":
+        return list(edge_faces)
+
+    threshold = max(0.0, min(180.0, float(feature_angle_degrees)))
+    selected: list[tuple[int, int]] = []
+    for edge, faces in edge_faces.items():
+        if len(faces) != 2:
+            selected.append(edge)
+            continue
+        left = normals[faces[0]]
+        right = normals[faces[1]]
+        if float(np.linalg.norm(left)) <= 0 or float(np.linalg.norm(right)) <= 0:
+            selected.append(edge)
+            continue
+        dot = max(-1.0, min(1.0, float(np.dot(left, right))))
+        angle = math.degrees(math.acos(dot))
+        if angle >= threshold:
+            selected.append(edge)
+
+    return selected or list(edge_faces)
+
+
+def _limit_edges_by_length(
+    edges: list[tuple[int, int]],
+    vertices: list[np.ndarray],
+    max_edges: int | None,
+) -> list[tuple[int, int]]:
+    if max_edges is None or max_edges <= 0 or len(edges) <= max_edges:
+        return edges
+    ranked = sorted(
+        edges,
+        key=lambda edge: float(np.linalg.norm(vertices[edge[1]] - vertices[edge[0]])),
+        reverse=True,
+    )
+    return ranked[:max_edges]
 
 
 def _normalize_vertices(vertices: np.ndarray) -> np.ndarray:

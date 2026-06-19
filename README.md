@@ -93,6 +93,23 @@ If no movement is recorded, Lissajou3D exports an automatic slow rotation. This 
 
 For oscilloscope/Lissajous use, simple low-poly STL files work best. Very dense meshes create many edges, which can render slowly and may look noisy because the beam has to draw too much geometry every scan.
 
+STL reduction settings affect both the viewer and the exported WAV:
+
+- `STL edge mode`:
+  - `feature_edges`: keeps boundary edges and hard-angle edges, while removing flat triangulation lines.
+  - `all_edges`: keeps every triangle edge from the STL.
+- `Feature angle`: minimum angle between neighboring triangle faces before their shared edge is kept.
+- `Max STL edges`: maximum number of edges kept after filtering. `0` means no limit.
+- `Apply STL Settings`: reloads the current STL with the selected reduction settings.
+
+For dense rounded objects such as chess pieces, start with:
+
+```text
+STL edge mode: feature_edges
+Feature angle: 20 to 35
+Max STL edges: 3000 to 8000
+```
+
 A small test model is included:
 
 ```text

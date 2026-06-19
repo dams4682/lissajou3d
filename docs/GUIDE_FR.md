@@ -68,6 +68,23 @@ Le bouton `Import STL` accepte les fichiers STL ASCII et STL binaires. Le logici
 
 Pour un affichage oscilloscope/Lissajous, les STL simples et peu détaillés donnent les meilleurs résultats. Un maillage très dense contient beaucoup d'arêtes: le rendu peut devenir lent et le dessin peut paraître brouillon, car le faisceau doit parcourir trop de traits à chaque balayage.
 
+Les réglages STL réduisent le modèle pour la preview et pour le WAV exporté:
+
+- `STL edge mode`:
+  - `feature_edges`: garde les bords et les arêtes anguleuses, mais retire les lignes plates de triangulation.
+  - `all_edges`: garde toutes les arêtes des triangles du STL.
+- `Feature angle`: angle minimum entre deux faces voisines pour garder leur arête commune.
+- `Max STL edges`: nombre maximum d'arêtes gardées après filtrage. `0` veut dire sans limite.
+- `Apply STL Settings`: recharge le STL courant avec les réglages choisis.
+
+Pour un objet rond très maillé, par exemple une pièce d'échecs, essayez:
+
+```text
+STL edge mode: feature_edges
+Feature angle: 20 à 35
+Max STL edges: 3000 à 8000
+```
+
 Un petit STL de test est inclus:
 
 ```text

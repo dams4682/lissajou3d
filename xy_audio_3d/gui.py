@@ -162,6 +162,7 @@ class MainWindow(QMainWindow):
         self.current_audio: np.ndarray | None = None
         self.custom_wireframe: Wireframe | None = None
         self.stl_path: Path | None = None
+        self.stl_settings_signature: tuple[str, float, int | None] | None = None
         self.temp_playback_files: list[Path] = []
         self._build_ui()
         self._apply_theme()
@@ -187,6 +188,12 @@ class MainWindow(QMainWindow):
         self.use_shape_btn.clicked.connect(lambda: self.select_primitive(self.shape.currentText()))
         self.import_stl_btn = QPushButton("Import STL")
         self.import_stl_btn.clicked.connect(self.import_stl_dialog)
+        self.apply_stl_btn = QPushButton("Apply STL Settings")
+        self.apply_stl_btn.clicked.connect(self.reload_stl)
+        self.stl_edge_mode = QComboBox()
+        self.stl_edge_mode.addItems(["feature_edges", "all_edges"])
+        self.stl_feature_angle = _double_spin(0.0, 180.0, 25.0, 1.0)
+        self.stl_max_edges = _spin(0, 1_000_000, 8_000, 500)
         self.stl_status = QLabel("Primitive shape")
         self.stl_status.setWordWrap(True)
         self.projection = QComboBox()
@@ -198,6 +205,10 @@ class MainWindow(QMainWindow):
         shape_form.addRow("Shape", self.shape)
         shape_form.addRow("Primitive", self.use_shape_btn)
         shape_form.addRow("STL", self.import_stl_btn)
+        shape_form.addRow("STL edge mode", self.stl_edge_mode)
+        shape_form.addRow("Feature angle", self.stl_feature_angle)
+        shape_form.addRow("Max STL edges", self.stl_max_edges)
+        shape_form.addRow("Apply", self.apply_stl_btn)
         shape_form.addRow("Source", self.stl_status)
         shape_form.addRow("Projection", self.projection)
         shape_form.addRow("Perspective", self.perspective)
@@ -334,6 +345,7 @@ class MainWindow(QMainWindow):
     def select_primitive(self, name: str) -> None:
         self.custom_wireframe = None
         self.stl_path = None
+        self.stl_settings_signature = None
         self.stl_status.setText("Primitive shape")
         self.viewer.set_shape(name)
         self._mark_render_dirty()
@@ -342,26 +354,61 @@ class MainWindow(QMainWindow):
         path_text, _ = QFileDialog.getOpenFileName(self, "Import STL Wireframe", "", "STL files (*.stl)")
         if not path_text:
             return
-        path = Path(path_text)
+        self._load_stl(Path(path_text))
+
+    def reload_stl(self) -> None:
+        if self.stl_path is None:
+            self.statusBar().showMessage("No STL loaded")
+            return
+        self._load_stl(self.stl_path)
+
+    def _load_stl(self, path: Path) -> None:
         try:
-            wireframe = load_stl_wireframe(path)
+            wireframe = load_stl_wireframe(
+                path,
+                edge_mode=self.stl_edge_mode.currentText(),
+                feature_angle_degrees=self.stl_feature_angle.value(),
+                max_edges=self.stl_max_edges.value() or None,
+            )
         except Exception as exc:
             QMessageBox.critical(self, "STL import failed", str(exc))
             return
         self.custom_wireframe = wireframe
         self.stl_path = path
+        self.stl_settings_signature = self._stl_settings_signature()
         label = f"STL: {path.stem}"
-        self.stl_status.setText(f"{path.name} - {len(wireframe.vertices)} vertices, {len(wireframe.edges)} edges")
+        source_edges = wireframe.source_edge_count or len(wireframe.edges)
+        self.stl_status.setText(
+            f"{path.name} - {len(wireframe.vertices)} vertices, "
+            f"{len(wireframe.edges)}/{source_edges} edges"
+        )
         self.viewer.set_wireframe(wireframe, label)
         self._mark_render_dirty()
-        self.statusBar().showMessage(f"Imported STL: {path}")
+        self.statusBar().showMessage(f"Loaded STL for preview and WAV: {path}")
+
+    def _stl_settings_signature(self) -> tuple[str, float, int | None]:
+        return (
+            self.stl_edge_mode.currentText(),
+            round(float(self.stl_feature_angle.value()), 3),
+            self.stl_max_edges.value() or None,
+        )
+
+    def _ensure_stl_settings_applied(self) -> bool:
+        if self.stl_path is None:
+            return True
+        if self.stl_settings_signature == self._stl_settings_signature():
+            return True
+        self._load_stl(self.stl_path)
+        return self.stl_settings_signature == self._stl_settings_signature()
 
     def _connect_render_dirty_signals(self) -> None:
-        for combo in (self.shape, self.projection, self.trace_mode, self.scan_note):
+        for combo in (self.shape, self.projection, self.trace_mode, self.scan_note, self.stl_edge_mode):
             combo.currentTextChanged.connect(self._mark_render_dirty)
         for spin in (
             self.perspective,
             self.view_scale,
+            self.stl_feature_angle,
+            self.stl_max_edges,
             self.duration,
             self.sample_rate,
             self.scan_rate_hz,
@@ -414,6 +461,8 @@ class MainWindow(QMainWindow):
 
     def render_audio(self) -> None:
         try:
+            if not self._ensure_stl_settings_applied():
+                return
             config = self._config()
             motion = self.motion if self.motion.keyframes else None
             self.current_audio = build_3d_xy_audio(config, motion=motion, wireframe=self.custom_wireframe)

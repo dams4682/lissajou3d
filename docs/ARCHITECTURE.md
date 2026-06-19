@@ -8,10 +8,11 @@ Lissajou3D is intentionally small and split into three layers.
 
 - creates wireframe primitives
 - imports ASCII or binary STL files and converts triangle edges to wireframes
+- filters STL meshes with feature-angle and maximum-edge reduction for oscilloscope use
 - applies rotation, translation and zoom
 - projects 3D vertices to 2D XY coordinates
 
-Imported STL meshes are centered and normalized once at import time. The renderer then treats them exactly like built-in wireframe primitives.
+Imported STL meshes are filtered, centered, and normalized once at import time. The renderer then treats them exactly like built-in wireframe primitives, so the same reduced STL is used for preview and WAV export.
 
 The projection uses a stable camera scale. It does not auto-fit every frame, because auto-fitting makes a rotating cube appear to grow and shrink unnaturally.
 
