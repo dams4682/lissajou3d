@@ -69,6 +69,8 @@ Si aucun mouvement n'est enregistré, le logiciel génère automatiquement une r
 - `Projection`: `orthographic` est plus stable; `perspective` donne plus de profondeur.
 - `Invert Y`: activé par défaut pour un affichage cohérent dans Bespoke.
 
+Les champs acceptent des valeurs expérimentales élevées, par exemple `8000`, `12000` ou `16000` Hz pour `Scan rate Hz`. Pour ces essais, utilisez plutôt `96000` ou `192000` en `Sample rate`; si le balayage est trop haut avec trop peu d'échantillons par cycle, la forme devient moins propre et le rendu peut être plus long à calculer.
+
 ## Exemple
 
 Un exemple est inclus:

@@ -65,6 +65,15 @@ def test_build_3d_xy_audio_is_stereo_normalized(tmp_path):
         assert wav.getnframes() == 2_000
 
 
+def test_build_3d_xy_audio_accepts_high_scan_rate():
+    config = Render3DConfig(shape="cube", duration=0.01, sample_rate=48_000, scan_rate_hz=16_000, smoothing=1)
+    audio = build_3d_xy_audio(config)
+
+    assert audio.shape == (480, 2)
+    assert np.isfinite(audio).all()
+    assert float(np.max(np.abs(audio))) <= 1.0
+
+
 def test_wire_walk_avoids_non_edge_jumps_for_cube():
     shape = make_shape("cube")
     contours = project_wireframe(shape, Transform(rotation_x=25, rotation_y=35), projection="orthographic")

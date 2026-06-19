@@ -173,8 +173,8 @@ class MainWindow(QMainWindow):
         self.shape.addItems(["cube", "pyramid", "sphere"])
         self.projection = QComboBox()
         self.projection.addItems(["orthographic", "perspective"])
-        self.perspective = _double_spin(1.2, 8.0, 2.8, 0.1)
-        self.view_scale = _double_spin(1.2, 6.0, 2.4, 0.1)
+        self.perspective = _double_spin(0.001, 1_000_000.0, 2.8, 0.1)
+        self.view_scale = _double_spin(0.001, 1_000_000.0, 2.4, 0.1)
         self.trace_mode = QComboBox()
         self.trace_mode.addItems(["wire_walk", "fast_jumps"])
         shape_form.addRow("Shape", self.shape)
@@ -187,14 +187,19 @@ class MainWindow(QMainWindow):
         render_box = QGroupBox("Audio Render")
         form = QFormLayout(render_box)
         form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapAllRows)
-        self.duration = _double_spin(0.1, 120.0, 5.0, 0.1)
-        self.sample_rate = _spin(8_000, 192_000, 48_000, 1_000)
-        self.scan_rate_hz = _double_spin(0.0, 240.0, 40.0, 1.0)
+        self.duration = _double_spin(0.001, 86_400.0, 5.0, 0.1)
+        self.sample_rate = _spin(1, 2_147_483_647, 48_000, 1_000)
+        self.scan_rate_hz = _double_spin(0.0, 1_000_000.0, 40.0, 1.0)
         self.scan_note = QComboBox()
-        self.scan_note.addItems(["", "C1", "D1", "E1", "F1", "G1", "A1", "B1", "C2", "D2", "E2", "F2", "G2", "A2", "B2", "C3", "F3"])
+        self.scan_note.addItems([
+            "",
+            "C1", "D1", "E1", "F1", "G1", "A1", "B1",
+            "C2", "D2", "E2", "F2", "G2", "A2", "B2",
+            "C3", "F3", "C4", "C5", "C6", "C7", "C8", "C9", "C10",
+        ])
         self.scan_note.setEditable(True)
-        self.scale = _double_spin(0.05, 1.0, 0.9, 0.05)
-        self.smoothing = _spin(1, 101, 1, 2)
+        self.scale = _double_spin(0.001, 1_000_000.0, 0.9, 0.05)
+        self.smoothing = _spin(1, 100_001, 1, 2)
         self.normalize = QCheckBox()
         self.normalize.setChecked(True)
         self.invert_x = QCheckBox()

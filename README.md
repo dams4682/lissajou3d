@@ -99,6 +99,8 @@ If no movement is recorded, Lissajou3D exports an automatic slow rotation. This 
 
 `Scan note` overrides `Scan rate Hz` when filled.
 
+The GUI accepts experimental high scan rates such as `8000`, `12000`, or `16000` Hz. Use a high sample rate such as `96000` or `192000` for those tests; very high scan rates can take longer to render and may look rough if there are too few samples per scan cycle.
+
 ## Bespoke Synth
 
 In Bespoke Synth:
