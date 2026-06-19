@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 import sys
 import winsound
 
 import numpy as np
 from PyQt6.QtCore import QPoint, Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QFont, QMatrix4x4, QPainter, QPalette
+from PyQt6.QtGui import QColor, QFont, QMatrix4x4, QPainter, QPalette, QPen
 from PyQt6.QtOpenGL import QOpenGLBuffer, QOpenGLFunctions_2_0, QOpenGLShader, QOpenGLShaderProgram
 from PyQt6.QtOpenGLWidgets import QOpenGLWidget
 from PyQt6.QtWidgets import (
@@ -32,12 +33,12 @@ from PyQt6.QtWidgets import (
 
 from xy_audio.audition import write_temp_wav
 from xy_audio.engine import export_wav
-from .geometry import Transform, Wireframe, load_stl_wireframe, make_shape
+from .geometry import Transform, Wireframe, load_stl_wireframe, make_shape, project_wireframe
 from .motion import MotionTrack, copy_transform
 from .render import Render3DConfig, build_3d_xy_audio
 
 
-class WireframeViewer(QOpenGLWidget):
+class GpuWireframeViewer(QOpenGLWidget):
     transform_changed = pyqtSignal(object)
     GL_COLOR_BUFFER_BIT = 0x00004000
     GL_DEPTH_BUFFER_BIT = 0x00000100
@@ -279,6 +280,131 @@ class WireframeViewer(QOpenGLWidget):
         matrix.ortho(-1.0, 1.0, -1.0, 1.0, -1.0, 1.0)
         return matrix
 
+
+class CpuWireframeViewer(QWidget):
+    transform_changed = pyqtSignal(object)
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.shape_name = "cube"
+        self.object_label = "cube"
+        self.custom_wireframe: Wireframe | None = None
+        self.projection = "orthographic"
+        self.perspective = 2.8
+        self.view_scale = 2.4
+        self.transform = Transform(rotation_x=25.0, rotation_y=-30.0, rotation_z=0.0, zoom=1.0)
+        self._last_pos: QPoint | None = None
+        self.setMinimumSize(520, 420)
+        self.setMouseTracking(True)
+
+    def set_shape(self, name: str) -> None:
+        self.shape_name = name
+        self.object_label = name
+        self.custom_wireframe = None
+        self.update()
+
+    def set_wireframe(self, wireframe: Wireframe, label: str) -> None:
+        self.custom_wireframe = wireframe
+        self.object_label = label
+        self.update()
+
+    def set_projection(self, projection: str, perspective: float, view_scale: float = 2.4) -> None:
+        self.projection = projection
+        self.perspective = perspective
+        self.view_scale = view_scale
+        self.update()
+
+    def reset_view(self) -> None:
+        self.transform = Transform(rotation_x=25.0, rotation_y=-30.0, rotation_z=0.0, zoom=1.0)
+        self.transform_changed.emit(copy_transform(self.transform))
+        self.update()
+
+    def paintEvent(self, _event) -> None:  # noqa: N802 - Qt naming
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.fillRect(self.rect(), QColor("#101418"))
+
+        side = max(16, min(self.width(), self.height()) - 48)
+        left = (self.width() - side) / 2
+        top = (self.height() - side) / 2
+
+        painter.setPen(QPen(QColor("#26313a"), 1))
+        for i in range(5):
+            x = left + side * i / 4
+            y = top + side * i / 4
+            painter.drawLine(int(x), int(top), int(x), int(top + side))
+            painter.drawLine(int(left), int(y), int(left + side), int(y))
+        painter.setPen(QPen(QColor("#3a4652"), 1))
+        painter.drawRect(int(left), int(top), int(side), int(side))
+
+        try:
+            wireframe = self.custom_wireframe or make_shape(self.shape_name)
+            contours = project_wireframe(
+                wireframe,
+                self.transform,
+                projection=self.projection,
+                perspective=self.perspective,
+                view_scale=self.view_scale,
+            )
+        except Exception:
+            contours = []
+
+        painter.setPen(QPen(QColor("#00d1b2"), 2.0))
+        for contour in contours:
+            a, b = contour
+            x1, y1 = self._map_point(a, left, top, side)
+            x2, y2 = self._map_point(b, left, top, side)
+            painter.drawLine(x1, y1, x2, y2)
+
+        painter.setPen(QColor("#aab4bf"))
+        painter.drawText(16, 24, f"{self.object_label} - drag to rotate, wheel to zoom, right-drag to move")
+        painter.end()
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        self._last_pos = event.position().toPoint()
+
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        if self._last_pos is None:
+            return
+        pos = event.position().toPoint()
+        dx = pos.x() - self._last_pos.x()
+        dy = pos.y() - self._last_pos.y()
+        buttons = event.buttons()
+        if buttons & Qt.MouseButton.LeftButton:
+            self.transform.rotation_y += dx * 0.5
+            self.transform.rotation_x += dy * 0.5
+        elif buttons & Qt.MouseButton.RightButton:
+            self.transform.offset_x += dx / max(1, self.width()) * 2.0
+            self.transform.offset_y -= dy / max(1, self.height()) * 2.0
+        self._last_pos = pos
+        self.transform_changed.emit(copy_transform(self.transform))
+        self.update()
+
+    def mouseReleaseEvent(self, _event) -> None:  # noqa: N802 - Qt naming
+        self._last_pos = None
+
+    def wheelEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        delta = event.angleDelta().y()
+        factor = 1.1 if delta > 0 else 1.0 / 1.1
+        self.transform.zoom = min(4.0, max(0.2, self.transform.zoom * factor))
+        self.transform_changed.emit(copy_transform(self.transform))
+        self.update()
+
+    @staticmethod
+    def _map_point(point: np.ndarray, left: float, top: float, side: float) -> tuple[int, int]:
+        x = left + (float(point[0]) + 1.0) * 0.5 * side
+        y = top + (1.0 - (float(point[1]) + 1.0) * 0.5) * side
+        return int(x), int(y)
+
+
+def _use_gpu_preview() -> bool:
+    value = os.environ.get("LISS3D_GPU_PREVIEW", "").strip().lower()
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    if value in {"0", "false", "no", "off"}:
+        return False
+    return not getattr(sys, "frozen", False)
+
     def _projection_matrix(self) -> QMatrix4x4:
         aspect = max(0.001, self.width() / max(1, self.height()))
         scale = max(0.001, float(self.view_scale))
@@ -416,7 +542,7 @@ class MainWindow(QMainWindow):
         controls_layout.addLayout(action_row)
         controls_layout.addStretch(1)
 
-        self.viewer = WireframeViewer()
+        self.viewer = GpuWireframeViewer() if _use_gpu_preview() else CpuWireframeViewer()
         self.viewer.transform_changed.connect(self.on_transform_changed)
         self.shape.currentTextChanged.connect(self.select_primitive)
         self.projection.currentTextChanged.connect(self._update_viewer_projection)

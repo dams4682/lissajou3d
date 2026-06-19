@@ -25,7 +25,7 @@ This means the WAV is still a normal stereo audio file, but when routed to an XY
 ## Features
 
 - Standalone PyQt6 GUI.
-- Interactive OpenGL/GPU 3D wireframe viewer.
+- Interactive 3D wireframe viewer.
 - Built-in shapes: cube, pyramid, sphere.
 - STL wireframe import, ASCII or binary.
 - Record mouse-driven movement.
@@ -108,6 +108,17 @@ For dense rounded objects such as chess pieces, start with:
 STL edge mode: feature_edges
 Feature angle: 20 to 35
 Max STL edges: 3000 to 8000
+```
+
+## GPU Preview
+
+The source version uses the OpenGL/GPU preview by default. The packaged Windows executable currently starts with the stable CPU preview by default, because OpenGL behavior can vary across packaged Windows environments.
+
+To test the GPU preview from PowerShell:
+
+```powershell
+$env:LISS3D_GPU_PREVIEW="1"
+.\dist\Lissajou3D\Lissajou3D.exe
 ```
 
 A small test model is included:
