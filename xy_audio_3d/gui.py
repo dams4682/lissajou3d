@@ -23,6 +23,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QMainWindow,
     QMessageBox,
+    QProgressBar,
     QPushButton,
     QScrollArea,
     QSpinBox,
@@ -41,6 +42,7 @@ from .render import Render3DConfig, build_3d_xy_audio
 class RenderWorker(QObject):
     finished = pyqtSignal(object)
     failed = pyqtSignal(str)
+    progress = pyqtSignal(int, int)
 
     def __init__(self, config: Render3DConfig, motion: MotionTrack | None, wireframe: Wireframe | None) -> None:
         super().__init__()
@@ -50,7 +52,12 @@ class RenderWorker(QObject):
 
     def run(self) -> None:
         try:
-            audio = build_3d_xy_audio(self.config, motion=self.motion, wireframe=self.wireframe)
+            audio = build_3d_xy_audio(
+                self.config,
+                motion=self.motion,
+                wireframe=self.wireframe,
+                progress_callback=self.progress.emit,
+            )
         except Exception as exc:
             self.failed.emit(str(exc))
             return
@@ -501,7 +508,7 @@ class MainWindow(QMainWindow):
         self.perspective = _double_spin(0.001, 1_000_000.0, 2.8, 0.1)
         self.view_scale = _double_spin(0.001, 1_000_000.0, 2.4, 0.1)
         self.trace_mode = QComboBox()
-        self.trace_mode.addItems(["wire_walk", "nearest_fragments", "fast_jumps"])
+        self.trace_mode.addItems(["wire_walk", "silhouette_loops", "nearest_fragments", "fast_jumps"])
         shape_form.addRow("Shape", self.shape)
         shape_form.addRow("Primitive", self.use_shape_btn)
         shape_form.addRow("STL", self.import_stl_btn)
@@ -573,6 +580,12 @@ class MainWindow(QMainWindow):
         action_row.addWidget(self.play_btn)
         action_row.addWidget(self.export_btn)
         controls_layout.addLayout(action_row)
+        self.render_progress = QProgressBar()
+        self.render_progress.setRange(0, 100)
+        self.render_progress.setValue(0)
+        self.render_progress.setTextVisible(True)
+        self.render_progress.setVisible(False)
+        controls_layout.addWidget(self.render_progress)
         controls_layout.addStretch(1)
 
         self.viewer = GpuWireframeViewer() if _use_gpu_preview() else CpuWireframeViewer()
@@ -787,6 +800,7 @@ class MainWindow(QMainWindow):
         self.render_thread.started.connect(self.render_worker.run)
         self.render_worker.finished.connect(self._render_finished)
         self.render_worker.failed.connect(self._render_failed)
+        self.render_worker.progress.connect(self._render_progress)
         self.render_worker.finished.connect(self.render_thread.quit)
         self.render_worker.failed.connect(self.render_thread.quit)
         self.render_thread.finished.connect(self._render_thread_finished)
@@ -800,6 +814,13 @@ class MainWindow(QMainWindow):
             f"{scan_label} scan, {config.geometry_rate_hz:.1f} geometry FPS"
         )
         self.render_thread.start()
+
+    def _render_progress(self, completed: int, total: int) -> None:
+        total = max(1, int(total))
+        completed = min(total, max(0, int(completed)))
+        percent = int(round(completed / total * 100))
+        self.render_progress.setValue(percent)
+        self.statusBar().showMessage(f"Rendering audio: {completed}/{total} geometry frames ({percent}%)")
 
     def _render_finished(self, result: object) -> None:
         audio, sample_rate = result
@@ -827,6 +848,9 @@ class MainWindow(QMainWindow):
         self.preview_btn.setEnabled(not busy)
         self.play_btn.setEnabled(not busy)
         self.export_btn.setEnabled(not busy)
+        self.render_progress.setVisible(busy)
+        if busy:
+            self.render_progress.setValue(0)
 
     def play_xy(self) -> None:
         if self.current_audio is None:

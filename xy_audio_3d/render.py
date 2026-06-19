@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import numpy as np
@@ -34,6 +35,7 @@ def build_3d_xy_audio(
     config: Render3DConfig,
     motion: MotionTrack | None = None,
     wireframe: Wireframe | None = None,
+    progress_callback: Callable[[int, int], None] | None = None,
 ) -> np.ndarray:
     if config.duration <= 0:
         raise ValueError("Duration must be greater than zero.")
@@ -49,6 +51,7 @@ def build_3d_xy_audio(
     frame_count = max(1, min(cycles, int(round(max(0.1, config.geometry_rate_hz) * config.duration))))
     frame_chunks: dict[int, np.ndarray] = {}
     chunks: list[np.ndarray] = []
+    completed_frames = 0
 
     for cycle in range(cycles):
         frame = min(frame_count - 1, int(cycle * frame_count / cycles))
@@ -64,6 +67,9 @@ def build_3d_xy_audio(
             )
             trajectory = _contours_to_trajectory(contours, mode=config.trace_mode)
             frame_chunks[frame] = _resample_polyline(trajectory, base_samples)
+            completed_frames += 1
+            if progress_callback is not None:
+                progress_callback(completed_frames, frame_count)
         chunks.append(frame_chunks[frame])
 
     audio = np.vstack(chunks)
@@ -118,6 +124,8 @@ def _contours_to_trajectory(contours: list[np.ndarray], mode: str = "wire_walk")
         return np.zeros((2, 2), dtype=np.float64)
     if mode == "wire_walk":
         return _wire_walk_trajectory(contours)
+    if mode == "silhouette_loops":
+        return _silhouette_loops_trajectory(contours)
     if mode == "nearest_fragments":
         return _nearest_fragment_trajectory(contours)
     pieces: list[np.ndarray] = []
@@ -193,6 +201,63 @@ def _wire_walk_trajectory(contours: list[np.ndarray]) -> np.ndarray:
     start = edges[0][0]
     walk_indices = _greedy_edge_walk(adjacency, unvisited, start)
     return np.asarray([vertices[i] for i in walk_indices], dtype=np.float64)
+
+
+def _silhouette_loops_trajectory(contours: list[np.ndarray]) -> np.ndarray:
+    """Assemble projected silhouette fragments into connected contours first."""
+    vertices, edges = _graph_from_contours(contours)
+    if not edges:
+        return np.vstack(contours)
+
+    adjacency: dict[int, list[int]] = {i: [] for i in range(len(vertices))}
+    for a, b in edges:
+        adjacency[a].append(b)
+        adjacency[b].append(a)
+
+    components = _connected_edge_components(adjacency, edges)
+    loops: list[np.ndarray] = []
+    for component_edges in components:
+        component_vertices = {vertex for edge in component_edges for vertex in edge}
+        endpoints = [vertex for vertex in component_vertices if len(adjacency[vertex]) == 1]
+        start = endpoints[0] if endpoints else component_edges[0][0]
+        unvisited = {_edge_key(a, b) for a, b in component_edges}
+        walk_indices = _greedy_edge_walk(adjacency, unvisited, start)
+        if len(walk_indices) >= 2:
+            loops.append(np.asarray([vertices[i] for i in walk_indices], dtype=np.float64))
+
+    if not loops:
+        return np.vstack(contours)
+    return _nearest_fragment_trajectory(loops)
+
+
+def _connected_edge_components(
+    adjacency: dict[int, list[int]],
+    edges: list[tuple[int, int]],
+) -> list[list[tuple[int, int]]]:
+    unassigned = {_edge_key(a, b) for a, b in edges}
+    components: list[list[tuple[int, int]]] = []
+
+    while unassigned:
+        first = next(iter(unassigned))
+        queue = [first[0], first[1]]
+        seen_vertices = set(queue)
+        component: list[tuple[int, int]] = []
+
+        for vertex in queue:
+            for neighbor in adjacency[vertex]:
+                key = _edge_key(vertex, neighbor)
+                if key not in unassigned:
+                    continue
+                unassigned.remove(key)
+                component.append((vertex, neighbor))
+                if neighbor not in seen_vertices:
+                    seen_vertices.add(neighbor)
+                    queue.append(neighbor)
+
+        if component:
+            components.append(component)
+
+    return components
 
 
 def _graph_from_contours(contours: list[np.ndarray]) -> tuple[list[np.ndarray], list[tuple[int, int]]]:

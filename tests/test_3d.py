@@ -250,6 +250,24 @@ def test_geometry_rate_limits_projection_rebuilds(monkeypatch):
     assert calls == 5
 
 
+def test_build_3d_xy_audio_reports_geometry_progress():
+    progress: list[tuple[int, int]] = []
+    config = Render3DConfig(
+        shape="cube",
+        duration=1.0,
+        sample_rate=8_000,
+        scan_rate_hz=40,
+        geometry_rate_hz=5,
+        smoothing=1,
+    )
+
+    audio = build_3d_xy_audio(config, progress_callback=lambda done, total: progress.append((done, total)))
+
+    assert audio.shape == (8_000, 2)
+    assert progress
+    assert progress[-1] == (5, 5)
+
+
 def test_wire_walk_avoids_non_edge_jumps_for_cube():
     shape = make_shape("cube")
     contours = project_wireframe(shape, Transform(rotation_x=25, rotation_y=35), projection="orthographic")
@@ -272,6 +290,21 @@ def test_wire_walk_avoids_non_edge_jumps_for_cube():
     assert len(walk_edges) >= len(allowed_edges)
     assert walk_edges
     assert set(walk_edges).issubset(allowed_edges)
+
+
+def test_silhouette_loops_assembles_connected_fragments():
+    contours = [
+        np.array([[1.0, 1.0], [0.0, 1.0]]),
+        np.array([[0.0, 0.0], [1.0, 0.0]]),
+        np.array([[0.0, 1.0], [0.0, 0.0]]),
+        np.array([[1.0, 0.0], [1.0, 1.0]]),
+    ]
+
+    loop = _contours_to_trajectory(contours, mode="silhouette_loops")
+    distances = np.linalg.norm(np.diff(loop, axis=0), axis=1)
+
+    assert loop.shape == (5, 2)
+    assert np.allclose(distances, 1.0)
 
 
 def test_nearest_fragments_reorders_disconnected_segments():

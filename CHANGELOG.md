@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add `silhouette_loops` trace mode to assemble connected STL silhouette fragments before drawing.
+- Add a GUI progress bar for background WAV rendering.
 - Add `Geometry FPS` to cache expensive 3D/STL silhouette frames during WAV export.
 - Optimize `nearest_fragments` trace ordering for dense STL silhouettes.
 - Render audio in a background Qt thread so long STL exports do not freeze the GUI.

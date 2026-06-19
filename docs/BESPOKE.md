@@ -77,3 +77,12 @@ Trace mode: wire_walk
 ```
 
 This makes the beam travel along existing wire edges instead of jumping directly from one disconnected edge to another.
+
+For STL silhouettes, also try:
+
+```text
+Trace mode: silhouette_loops
+STL edge mode: silhouette_edges or silhouette_feature
+```
+
+This first rebuilds connected silhouette fragments into longer contours. It can reduce visible travel lines between tiny STL segments, but separate contours still need some visible travel on a normal two-channel XY signal.
