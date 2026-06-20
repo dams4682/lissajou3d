@@ -4,6 +4,12 @@ Lissajou3D transforme une forme 3D filaire animée en fichier WAV stéréo.
 
 Version actuelle: `v1.2.0`
 
+## Plateforme supportée
+
+Lissajou3D est actuellement prévu et testé pour Windows uniquement.
+
+La release publique fournit un exécutable Windows, et la lecture audio locale utilise l'API audio Windows. Linux et macOS ne sont pas encore supportés.
+
 Depuis le code source Python, la preview 3D peut utiliser OpenGL/GPU pour afficher les fils de fer plus rapidement. L'exécutable Windows démarre par défaut avec la preview CPU stable tant que le mode GPU packagé reste expérimental. L'export WAV reste calculé par le moteur audio CPU.
 
 Pour tester la preview GPU dans l'exécutable:

@@ -14,6 +14,12 @@ https://github.com/user-attachments/assets/e799bb34-5140-45ae-90e8-51e8f552fd18
 
 Current release: `v1.2.0`
 
+## Platform Support
+
+Lissajou3D is currently built and tested for Windows only.
+
+The published release provides a Windows executable, and local playback uses the Windows audio API. Linux and macOS are not supported yet.
+
 <img width="1595" height="841" alt="Capture d’écran 2026-06-19 005354" src="https://github.com/user-attachments/assets/48531ccc-ccf7-4892-8d8c-be5dc9958b02" />
 The exported WAV uses this mapping:
 
