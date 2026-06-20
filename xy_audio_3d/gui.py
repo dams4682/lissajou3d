@@ -313,6 +313,21 @@ class GpuWireframeViewer(QOpenGLWidget):
         matrix.ortho(-1.0, 1.0, -1.0, 1.0, -1.0, 1.0)
         return matrix
 
+    def _projection_matrix(self) -> QMatrix4x4:
+        aspect = max(0.001, self.width() / max(1, self.height()))
+        scale = max(0.001, float(self.view_scale))
+        matrix = QMatrix4x4()
+        if self.projection == "perspective":
+            matrix.perspective(45.0, aspect, 0.1, 100.0)
+            view = QMatrix4x4()
+            view.translate(0.0, 0.0, -max(1.2, float(self.perspective)))
+            return matrix * view
+        if aspect >= 1.0:
+            matrix.ortho(-scale * aspect, scale * aspect, -scale, scale, -100.0, 100.0)
+        else:
+            matrix.ortho(-scale, scale, -scale / aspect, scale / aspect, -100.0, 100.0)
+        return matrix
+
 
 class CpuWireframeViewer(QWidget):
     transform_changed = pyqtSignal(object)
@@ -437,21 +452,6 @@ def _use_gpu_preview() -> bool:
     if value in {"0", "false", "no", "off"}:
         return False
     return not getattr(sys, "frozen", False)
-
-    def _projection_matrix(self) -> QMatrix4x4:
-        aspect = max(0.001, self.width() / max(1, self.height()))
-        scale = max(0.001, float(self.view_scale))
-        matrix = QMatrix4x4()
-        if self.projection == "perspective":
-            matrix.perspective(45.0, aspect, 0.1, 100.0)
-            view = QMatrix4x4()
-            view.translate(0.0, 0.0, -max(1.2, float(self.perspective)))
-            return matrix * view
-        if aspect >= 1.0:
-            matrix.ortho(-scale * aspect, scale * aspect, -scale, scale, -100.0, 100.0)
-        else:
-            matrix.ortho(-scale, scale, -scale / aspect, scale / aspect, -100.0, 100.0)
-        return matrix
 
 
 class MainWindow(QMainWindow):

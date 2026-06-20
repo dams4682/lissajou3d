@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Fix the GPU preview projection matrix method indentation.
 - Add beginner-friendly simple mode with an `Advanced mode` toggle for technical controls.
 - Document current Windows-only support.
 

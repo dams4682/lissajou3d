@@ -9,6 +9,7 @@ import pytest
 import xy_audio_3d.render as render_module
 from xy_audio.engine import export_wav
 from xy_audio_3d.geometry import Transform, load_stl_wireframe, make_shape, project_vertices, project_wireframe
+from xy_audio_3d.gui import GpuWireframeViewer
 from xy_audio_3d.motion import MotionTrack, MotionKeyframe
 from xy_audio_3d.render import Render3DConfig, _contours_to_trajectory, build_3d_xy_audio
 
@@ -187,6 +188,17 @@ def test_projection_keeps_stable_camera_scale():
     angled_span = float(np.ptp(angled[:, 0]))
     assert face_span == pytest.approx(2.0 / 2.4)
     assert angled_span > face_span
+
+
+def test_gpu_viewer_has_projection_matrix_method():
+    assert hasattr(GpuWireframeViewer, "_projection_matrix")
+    assert "_projection_matrix" not in _use_gpu_preview_nested_names()
+
+
+def _use_gpu_preview_nested_names() -> tuple[str, ...]:
+    from xy_audio_3d.gui import _use_gpu_preview
+
+    return _use_gpu_preview.__code__.co_names
 
 
 def test_motion_track_interpolates_keyframes():
